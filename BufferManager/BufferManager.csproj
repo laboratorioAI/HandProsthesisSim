@@ -47,8 +47,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BufferManager.cs" />
+    <Compile Include="ManagementConstants.cs" />
     <Compile Include="MarshalCore.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ProthesisCorrection.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

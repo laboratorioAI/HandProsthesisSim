@@ -33,16 +33,17 @@ namespace BufferPrint
 
         private static void RunBufferLoop()
         {
-            int c = 0;
+            InventorObjectData objData = new InventorObjectData(bufferManager.GetAssemblyDocument());
 
+            int c = 0;
             while (isRunning)
             {
-                ReadFromBuffer(c);
+                BufferManagerMessage msg = ReadFromBuffer(c);
                 c++;
 
-                ReadInventorObjData();
+                msg = RequestInventorCommandData(objData, msg);
 
-                WriteIntentorObjData();
+                ReadInventorAssemblyData(objData);
 
                 Thread.Sleep(1500);
 
@@ -50,22 +51,21 @@ namespace BufferPrint
             }
         }
 
-        private static void ReadFromBuffer(int c)
+        private static BufferManagerMessage ReadFromBuffer(int c)
         {
             BufferManagerMessage dequeueResult = bufferManager.ReadFromBuffer();
-            Console.WriteLine($"Count {c} " + dequeueResult.ToString());
+            Console.WriteLine($"Nr. {c} buffer read: " + dequeueResult.ToString());
+            return dequeueResult;
         }
 
-        private static void ReadInventorObjData()
+        private static void ReadInventorAssemblyData(InventorObjectData objData)
         {
-            InventorObjectData objData = new InventorObjectData(bufferManager.GetAssemblyDocument());
-            objData.PrintToConsoleAssemblyDocumentData();
+            objData.ExtractAssemblyData();
         }
 
-        private static void WriteIntentorObjData()
+        private static BufferManagerMessage RequestInventorCommandData(InventorObjectData objData, BufferManagerMessage msg)
         {
-            InventorObjectData objData = new InventorObjectData(bufferManager.GetAssemblyDocument());
-            objData.PushData();
+            return objData.CommandData(msg);
         }
     }
 }

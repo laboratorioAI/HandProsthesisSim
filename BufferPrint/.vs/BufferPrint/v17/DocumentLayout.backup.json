@@ -3,11 +3,13 @@
   "WorkspaceRootPath": "D:\\Repositorios_Politecnica\\TesisProj\\BufferPrint\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{13DA88C6-7CC5-4866-A9A1-00641F2440C6}|..\\BufferManager\\BufferManager.csproj|d:\\repositorios_politecnica\\tesisproj\\buffermanager\\prothesiscorrection.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{13DA88C6-7CC5-4866-A9A1-00641F2440C6}|..\\BufferManager\\BufferManager.csproj|d:\\repositorios_politecnica\\tesisproj\\buffermanager\\buffermanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{4CE13720-BE96-4BC9-AB56-9EC99FBB096D}|BufferPrint.csproj|d:\\repositorios_politecnica\\tesisproj\\bufferprint\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{4CE13720-BE96-4BC9-AB56-9EC99FBB096D}|BufferPrint.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{E64D459C-7A95-440C-9292-C75CEF7C557F}|..\\ProthesisSimulation\\ProthesisSimulation.csproj|d:\\repositorios_politecnica\\tesisproj\\prothesissimulation\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -16,18 +18,31 @@
       "VerticalTabListWidth": 256,
       "DocumentGroups": [
         {
-          "DockedWidth": 432,
+          "DockedWidth": 52,
           "SelectedChildIndex": 0,
           "Children": [
             {
               "$type": "Document",
               "DocumentIndex": 0,
+              "Title": "ProthesisCorrection.cs",
+              "DocumentMoniker": "D:\\Repositorios_Politecnica\\TesisProj\\BufferManager\\ProthesisCorrection.cs",
+              "RelativeDocumentMoniker": "..\\BufferManager\\ProthesisCorrection.cs",
+              "ToolTip": "D:\\Repositorios_Politecnica\\TesisProj\\BufferManager\\ProthesisCorrection.cs",
+              "RelativeToolTip": "..\\BufferManager\\ProthesisCorrection.cs",
+              "ViewState": "AgIAAC0AAAAAAAAAAAAMwEMAAAAUAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-05-18T16:52:28.187Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
               "Title": "BufferManager.cs",
               "DocumentMoniker": "D:\\Repositorios_Politecnica\\TesisProj\\BufferManager\\BufferManager.cs",
               "RelativeDocumentMoniker": "..\\BufferManager\\BufferManager.cs",
               "ToolTip": "D:\\Repositorios_Politecnica\\TesisProj\\BufferManager\\BufferManager.cs",
               "RelativeToolTip": "..\\BufferManager\\BufferManager.cs",
-              "ViewState": "AgIAAEABAAAAAAAAAAAAAFoBAAAgAAAAAAAAAA==",
+              "ViewState": "AgIAAC0AAAAAAAAAAAAYwEEAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-05-08T12:45:56.046Z",
               "EditorCaption": ""
@@ -35,20 +50,20 @@
           ]
         },
         {
-          "DockedWidth": 432,
+          "DockedWidth": 26,
           "SelectedChildIndex": 0,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "Program.cs",
-              "DocumentMoniker": "D:\\Repositorios_Politecnica\\TesisProj\\BufferPrint\\Program.cs",
-              "RelativeDocumentMoniker": "Program.cs",
-              "ToolTip": "D:\\Repositorios_Politecnica\\TesisProj\\BufferPrint\\Program.cs",
-              "RelativeToolTip": "Program.cs",
-              "ViewState": "AgIAACMAAAAAAAAAAAAAwCwAAAAnAAAAAAAAAA==",
+              "DocumentMoniker": "D:\\Repositorios_Politecnica\\TesisProj\\ProthesisSimulation\\Program.cs",
+              "RelativeDocumentMoniker": "..\\ProthesisSimulation\\Program.cs",
+              "ToolTip": "D:\\Repositorios_Politecnica\\TesisProj\\ProthesisSimulation\\Program.cs",
+              "RelativeToolTip": "..\\ProthesisSimulation\\Program.cs",
+              "ViewState": "AgIAADMAAAAAAAAAAAAIwEMAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-05-08T12:44:21.141Z",
+              "WhenOpened": "2025-05-10T01:18:19.069Z",
               "EditorCaption": ""
             }
           ]

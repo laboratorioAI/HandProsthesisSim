@@ -1,15 +1,29 @@
-% push data information to shared buffer with Matlab
-% load library
-NET.addAssembly('D:\Repositorios_Politecnica\TesisProj\BufferManager\obj\Debug\BufferManager.dll');
-% instanciate object
+% Load the BufferManager .NET assembly
+asmPath = 'D:\Repositorios_Politecnica\TesisProj\BufferManager\obj\Debug\BufferManager.dll';  % change this to your DLL path
+NET.addAssembly(asmPath);
+
+% Create an instance of BufferManager
 bm = BufferPrint.BufferManager();
 bm.CreateOrOpenSharedMemory();
-% push to memory
-msg = bm.WriteToBuffer(single(3.14));
-disp(char(msg.ToString()));
-% close buffer memory
+
+% Define the list of actions to push
+actions = {
+    'read__', 'RInMdJ', single(45.00);
+    'writte', 'LThBsJ', single(30.00);
+    'read__', 'RThDpJ', single(15.50);
+};
+
+% Push each entry
+for i = 1:size(actions, 1)
+    action  = string(actions{i,1});
+    jointId = string(actions{i,2});
+    angle   = actions{i,3};
+
+    msg = bm.WriteToBuffer(action, jointId, angle);
+
+    % Print feedback
+    disp(char(msg.ToString()));
+end
+
+% Cleanup
 bm.CloseSharedMemory();
-% recuerda que para ver el valor impreso en la consola hay que
-% ejecutar el proyecto C# llamado Buffer print, a pesar que la
-% libreria a la que se referencia esta en el proyecto C# llamado
-% Buffer manager
