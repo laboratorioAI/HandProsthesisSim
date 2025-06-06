@@ -1,5 +1,6 @@
 ﻿using BufferManager;
 using Inventor;
+using Newtonsoft.Json;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -19,6 +20,7 @@ namespace BufferPrint
     {
         private Inventor.Application m_InventorApplication;
         private Inventor.AssemblyDocument m_assemblyDocument;
+        private BufferPrint.InventorObjectData _inventorObject;
         private ArrayList m_ComponentOccurrenceArray = new ArrayList();
         private ArrayList m_JointInfoArray = new ArrayList();
         private Tree<string> m_tree;
@@ -38,6 +40,35 @@ namespace BufferPrint
         private const int BufferStartOffset = 8;
         private const int _size = BufferStartOffset + EntryLength * MaxEntries;
 
+        private bool inventorDataExtracted = false;
+        private bool isConnectedToInventor = false;
+
+        public InventorObjectData GetInventorObjectData()
+        {
+            return _inventorObject;
+        }
+
+        public void SetInventorObjectData(InventorObjectData inventorObject)
+        {
+            _inventorObject = inventorObject;
+        }
+
+        public void SetInventorAppInstance(Application inventorApp)
+        {
+            m_InventorApplication = inventorApp;
+        }
+
+        public Application GetInventorAppInstance()
+        {
+            if (Init())
+            {
+                return m_InventorApplication;
+            }
+            else
+            {
+                return null;
+            }
+        }
 
         public AssemblyDocument GetAssemblyDocument()
         {
@@ -289,13 +320,47 @@ namespace BufferPrint
 
         public bool Init()
         {
-            if (!ConnectInventor())
+            if (!isConnectedToInventor)
             {
+                if (ConnectInventor())
+                {
+                    isConnectedToInventor = true;
+                    return true;
+                }
                 return false;
             }
-
-            return true;
+            else
+            {
+                return true;
+            }
         }
+
+        public MassCenterAccumulator GetSubassemblyAccumulator()
+        {
+            if (!Init())
+            {
+                Console.WriteLine("Press any key to exit...");
+                Console.ReadKey();
+                MassCenterAccumulator tmp = new MassCenterAccumulator();
+                return tmp;
+            }
+            else
+            {
+                if (!inventorDataExtracted)
+                {
+                    _inventorObject.ExtractAssemblyData();
+                    inventorDataExtracted = true;
+                }
+                return _inventorObject.accumulator;
+            }
+        }
+
+        //public string GetsubassemblyAccumulatorJson()
+        //{
+        //    var dtos = _inventorObject.accumulator.ToDTOs();
+        //    return JsonConvert.SerializeObject(dtos);
+        //}
+
     }
 
     public class InventorObjectData
@@ -304,13 +369,193 @@ namespace BufferPrint
         public int ComponentCount { get; private set; }
         public List<string> ComponentNames { get; private set; }
         public List<string> JointNames { get; private set; }
-        private AssemblyDocument _assemblyDoc;
+        public MassCenterAccumulator accumulator { get; private set; } = new MassCenterAccumulator();
 
-        public InventorObjectData(AssemblyDocument assemblyDoc)
+        private AssemblyDocument _assemblyDoc;
+        private Application _inventorApp;
+
+        public InventorObjectData(Application inventorApp, AssemblyDocument assemblyDoc)
         {
             _assemblyDoc = assemblyDoc;
+            _inventorApp = inventorApp;
             ComponentNames = new List<string>();
             JointNames = new List<string>();
+        }
+
+        void ProcessOccurrence(ComponentOccurrence occurrence, MassCenterAccumulator accumulator)
+        {
+            Document doc = occurrence.Definition.Document;
+
+            if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
+            {
+                // Leaf part — ignore, we only process at phalanx assembly level
+                return;
+            }
+
+            if (doc.DocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
+            {
+                string fingerName = WhichPhalanxSubassembly(occurrence);
+
+                if(fingerName != "")
+                {
+                    ProcessPhalanx(occurrence, fingerName, accumulator);
+                }
+                else
+                {
+                    Console.WriteLine("ProcessOccurrence method: this ocurrence is not part of a finger set");
+                }
+            }
+        }
+
+        private void ProcessPhalanx(ComponentOccurrence phalanxOccurrence, string phalanxName, MassCenterAccumulator accumulator)
+        {
+            // Inverse transform to bring global COMs into this phalanx's frame
+            Matrix inverseTransform = phalanxOccurrence.Transformation.Copy();
+            inverseTransform.Invert();
+
+            // Get sub-occurrences (parts only)
+            AssemblyComponentDefinition phalanxDef = ((AssemblyDocument)phalanxOccurrence.Definition.Document).ComponentDefinition;
+
+            foreach (ComponentOccurrence partOcc in phalanxDef.Occurrences)
+            {
+                if (partOcc.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject)
+                {
+                    double mass = partOcc.MassProperties.Mass;
+
+                    Point partOccurenceCOM = partOcc.MassProperties.CenterOfMass;
+
+                    // NOTA: finalemente globalCOM es la variable que guarda el valor de COM que corresponde a la phalanx en coordenadas locales de phalanx
+                    //Point localCOM = TransformPoint(globalCOM, inverseTransform, _inventorApp);
+
+                    accumulator.Add(phalanxName, mass, partOccurenceCOM);
+                }
+            }
+
+            foreach (ComponentOccurrence partOcc in phalanxDef.Occurrences)
+            {
+                if (partOcc.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject)
+                {
+                    MassProperties massProps = partOcc.MassProperties;
+                    double Ixx = 0, Iyy = 0, Izz = 0, Ixy = 0, Iyz = 0, Ixz = 0;
+
+                    // get full local inertia tensor (about COM, in part frame)
+                    massProps.XYZMomentsOfInertia(out Ixx, out Iyy, out Izz, out Ixy, out Iyz, out Ixz);
+
+                    //float factorConversion = 292.6397f;     // lb_in2 to kg mm2
+                    //float factorConversion = 1.0f;     //
+                    float factorConversion = 100.0f;     // kg cm2 to kg mm2
+
+                    double[,] I_local = new double[3, 3]
+                    {
+                        { Ixx * factorConversion, -Ixy * factorConversion, -Ixz * factorConversion },
+                        { -Ixy * factorConversion, Iyy * factorConversion, -Iyz * factorConversion },
+                        { -Ixz * factorConversion, -Iyz * factorConversion, Izz *factorConversion }
+                    };
+
+                    // extract rotatiaon from part frame to phalanx frame
+                    Matrix T = partOcc.Transformation;
+                    double[,] R = new double[3, 3]
+                    {
+                        { T.Cell[1,1], T.Cell[1,2], T.Cell[1,3] },
+                        { T.Cell[2,1], T.Cell[2,2], T.Cell[2,3] },
+                        { T.Cell[3,1], T.Cell[3,2], T.Cell[3,3] }
+                    };
+
+                    // rotate inertia tensor to phalanx frame
+                    double[,] R_T = Transpose(R);
+                    double[,] I_rotated = Multiply(Multiply(R, I_local), R_T);      // matrix de inercia en frame de phalanx assembly,
+                                                                                    // expressed in the phalanx assembly's local coordinate frame
+                                                                                    // and measured about the phalanx's center of mass
+
+                    // paralle axis theorem
+                    Point partOccurenceCOM = partOcc.MassProperties.CenterOfMass;
+                    Point assemblyCOM = accumulator.GetCenterOfMass(phalanxName, _inventorApp);
+
+                    double dx = partOccurenceCOM.X - assemblyCOM.X;
+                    double dy = partOccurenceCOM.Y - assemblyCOM.Y;
+                    double dz = partOccurenceCOM.Z - assemblyCOM.Z;
+
+                    double[,] shift = new double[3, 3]
+                    {
+                        { dy*dy + dz*dz, -dx*dy,       -dx*dz },
+                        { -dy*dx,        dx*dx + dz*dz, -dy*dz },
+                        { -dz*dx,        -dz*dy,       dx*dx + dy*dy }
+                    };
+
+                    double mass = partOcc.MassProperties.Mass;
+
+                    for (int i = 0; i < 3; i++)
+                        for (int j = 0; j < 3; j++)
+                            I_rotated[i, j] += mass * shift[i, j];
+
+                    accumulator.SetInertiaMatrixCOM(phalanxName, I_rotated);
+
+                    // translate inertia matrix from the assembly COM to the phalanx origin
+                    // Apply second shift: from COM to joint (origin of phalanx frame)
+                    double dx_joint = assemblyCOM.X; // assuming joint is at origin (0,0,0)
+                    double dy_joint = assemblyCOM.Y;
+                    double dz_joint = assemblyCOM.Z;
+
+                    double[,] shiftToJoint = new double[3, 3]
+                    {
+                        { dy_joint*dy_joint + dz_joint*dz_joint, -dx_joint*dy_joint, -dx_joint*dz_joint },
+                        { -dy_joint*dx_joint, dx_joint*dx_joint + dz_joint*dz_joint, -dy_joint*dz_joint },
+                        { -dz_joint*dx_joint, -dz_joint*dy_joint, dx_joint*dx_joint + dy_joint*dy_joint }
+                    };
+
+                    // Now shift entire part contribution to joint origin
+                    for (int i = 0; i < 3; i++)
+                        for (int j = 0; j < 3; j++)
+                            I_rotated[i, j] += mass * shiftToJoint[i, j];
+
+
+                    //accumulator.SetInertiaMatrix(I_rotated);
+                    accumulator.SetInertiaMatrix(phalanxName, I_rotated);
+                }
+            }
+        }
+
+        double[,] Multiply(double[,] A, double[,] B)
+        {
+            double[,] result = new double[3, 3];
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                    for (int k = 0; k < 3; k++)
+                        result[i, j] += A[i, k] * B[k, j];
+            return result;
+        }
+
+        double[,] Transpose(double[,] A)
+        {
+            double[,] result = new double[3, 3];
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                    result[i, j] = A[j, i];
+            return result;
+        }
+
+        private string WhichPhalanxSubassembly(ComponentOccurrence occ)
+        {
+            string name = occ.Name.ToLower();
+
+            if(!name.Contains("proximal") && !name.Contains("middle") && !name.Contains("distal"))
+            {
+                return ""; // Not a phalanx subassembly
+            }
+
+            if (name.Contains("proximal") || name.Contains("middle") || name.Contains("distal"))
+            {
+                string[] phalanxTypes = new[] { "proximal", "middle", "distal" };
+                string matchedType = phalanxTypes.FirstOrDefault(type => name.Contains(type));
+
+                if (name.Contains("1")) return $"{matchedType}Ring"; // Ring finger
+                if (name.Contains("2")) return $"{matchedType}Middle"; // Middle finger
+                if (name.Contains("3")) return $"{matchedType}Picky"; // Picky finger
+                if (name.Contains("4")) return $"{matchedType}Index"; // Index finger
+                if (name.Contains("5")) return $"{matchedType}Thumb"; // Thumb finger
+            }
+
+            return "";
         }
 
         public void ExtractAssemblyData()
@@ -323,20 +568,21 @@ namespace BufferPrint
 
             foreach (ComponentOccurrence occ in occurrences)
             {
-                ComponentNames.Add(occ.Name);
-                Console.WriteLine($"Component name: {occ.Name}");
+                //Console.WriteLine($"Component name: {occ.Name}");
+
+                // Entry point from your top-level assembly document
+                ProcessOccurrence(occ, accumulator);
             }
 
-            // Joints
-            AssemblyJoints joints = _assemblyDoc.ComponentDefinition.Joints;
-            Console.WriteLine($"joints count: {joints.Count}");
-            foreach (AssemblyJoint joint in joints)
+            // printing subassemblies properties
+            foreach (string label in accumulator.Labels)
             {
-                Console.WriteLine($"Joint name: {joint.Name}");
-                double angleRad = joint.Definition.AngularPosition.Value;
-                double andleDeg = angleRad * (180.0 / Math.PI);
-                Console.WriteLine($"Joint angle (deg): {andleDeg}");
-                JointNames.Add(joint.Name);
+                double totalMass = accumulator.GetTotalMass(label);
+                Inventor.Point com = accumulator.GetCenterOfMass(label, _inventorApp);
+
+                double[,] inertialMat = accumulator.GetInertiaMatrix(label);
+
+                //Console.WriteLine($"[Phalanx: {label}] Total Mass: {totalMass} kg, Center of Mass (local frame): X={com.X} cm, Y={com.Y} cm, Z={com.Z} cm, I_COMx={inertialMat[0, 0]} kg·mm², I_COMy={inertialMat[1, 1]} kg·mm², I_COMz={inertialMat[2, 2]} kg·mm²");
             }
         }
 
@@ -564,5 +810,197 @@ namespace BufferPrint
             }
         }
     }
+
+    // Struct to accumulate total mass and weighted COM sum
+    public class MassCenterData
+    {
+        public double TotalMass { get; set; }
+        public double WeightedX { get; set; }
+        public double WeightedY { get; set; }
+        public double WeightedZ { get; set; }
+
+        private double[,] _InertiaMatrix;
+        private double[,] _InertiaMatrixCOM;
+
+        public void Add(double mass, Inventor.Point com, bool convertToMm2 = true)
+        {
+            TotalMass += mass;
+            WeightedX += mass * com.X;
+            WeightedY += mass * com.Y;
+            WeightedZ += mass * com.Z;
+        }
+
+        public Inventor.Point GetCenterOfMass(Inventor.Application app)
+        {
+            if (TotalMass == 0)
+                return app.TransientGeometry.CreatePoint(0, 0, 0);
+
+            return app.TransientGeometry.CreatePoint(
+                WeightedX / TotalMass,
+                WeightedY / TotalMass,
+                WeightedZ / TotalMass
+            );
+        }
+
+        public PointDTO GetCenterOfMassDTO()
+        {
+            if (TotalMass == 0)
+                return new PointDTO(0, 0, 0);
+
+            return new PointDTO(
+                WeightedX / TotalMass,
+                WeightedY / TotalMass,
+                WeightedZ / TotalMass
+            );
+        }
+
+        public class PointDTO
+        {
+            public double X { get; set; }
+            public double Y { get; set; }
+            public double Z { get; set; }
+
+            public PointDTO(double x, double y, double z)
+            {
+                X = x;
+                Y = y;
+                Z = z;
+            }
+
+            public PointDTO()
+            {
+                X = double.NaN;
+                Y = double.NaN;
+                Z = double.NaN;
+            }
+        }
+
+        public double[,] GetInertia() => _InertiaMatrix;
+
+        public void SetInertia(double[,] inertia) => _InertiaMatrix = inertia;
+
+        public double[,] GetInertiaCOM() => _InertiaMatrixCOM;
+
+        public void SetInertiaCOM(double[,] inertiaCOM) => _InertiaMatrixCOM = inertiaCOM;
+    }
+
+    public class MassCenterDTO
+    {
+        public string Label { get; set; }
+        public double TotalMass { get; set; }
+        public double[] CenterOfMass { get; set; }  // [x, y, z]
+        public double[] InertiaMatrixFlat { get; set; } // 3x3 matrix as flat array (9 elements)
+    }
+
+
+    public class MassCenterAccumulator
+    {
+        private Dictionary<string, MassCenterData> _dataMap;
+
+        public MassCenterAccumulator()
+        {
+            _dataMap = new Dictionary<string, MassCenterData>();
+        }
+
+        public void Add(string label, double mass, Inventor.Point com)
+        //public void Add(string label, double mass, Inventor.Point com, double ixx, double iyy, double izz)
+        {
+            if (!_dataMap.ContainsKey(label))
+                _dataMap[label] = new MassCenterData();
+
+            MassCenterData current = _dataMap[label];
+            //current.Add(mass, com, ixx, iyy, izz);
+            current.Add(mass, com);
+            _dataMap[label] = current;
+        }
+
+        public Point GetCenterOfMass(string label, Inventor.Application app)
+        {
+            if (_dataMap.ContainsKey(label))
+            {
+                return _dataMap[label].GetCenterOfMass(app);
+            }
+
+            return null;
+        }
+
+        public MassCenterData.PointDTO GetCenterOfMassDTO(string label)
+        {
+            if (_dataMap.ContainsKey(label))
+            {
+                return _dataMap[label].GetCenterOfMassDTO();
+            }
+
+            return new MassCenterData.PointDTO();
+        }
+
+        public double GetTotalMass(string label)
+        {
+            return _dataMap.ContainsKey(label) ? _dataMap[label].TotalMass : 0.0;
+        }
+
+        public IEnumerable<string> Labels => _dataMap.Keys;
+
+        public void SetInertiaMatrix(string label, double[,] InertiaMatrix)
+        {
+            if (!_dataMap.ContainsKey(label))
+                _dataMap[label] = new MassCenterData();
+
+            MassCenterData current = _dataMap[label];
+            current.SetInertia(InertiaMatrix);
+            _dataMap[label] = current;
+        }
+
+        public void SetInertiaMatrixCOM(string label, double[,] InertiaMatrix)
+        {
+            if (!_dataMap.ContainsKey(label))
+                _dataMap[label] = new MassCenterData();
+
+            MassCenterData current = _dataMap[label];
+            current.SetInertia(InertiaMatrix);
+            _dataMap[label] = current;
+        }
+
+        public double[,] GetInertiaMatrix(string label)
+        {
+            MassCenterData current = _dataMap[label];
+            return current.GetInertia();
+        }
+
+        //public List<MassCenterDTO> ToDTOs()
+        //{
+        //    var result = new List<MassCenterDTO>();
+
+        //    foreach (var kvp in _dataMap)
+        //    {
+        //        var label = kvp.Key;
+        //        var data = kvp.Value;
+
+        //        var com = data.GetCenterOfMass(null);  // Replace with appropriate app or adapt data to store XYZ directly
+
+        //        double[] comArray = new double[] { com.X, com.Y, com.Z };
+
+        //        double[,] matrix = data.GetInertia();
+        //        double[] inertiaFlat = matrix != null ?
+        //            new double[] {
+        //        matrix[0,0], matrix[0,1], matrix[0,2],
+        //        matrix[1,0], matrix[1,1], matrix[1,2],
+        //        matrix[2,0], matrix[2,1], matrix[2,2]
+        //            } : new double[9];
+
+        //        result.Add(new MassCenterDTO
+        //        {
+        //            Label = label,
+        //            TotalMass = data.TotalMass,
+        //            CenterOfMass = comArray,
+        //            InertiaMatrixFlat = inertiaFlat
+        //        });
+        //    }
+
+        //    return result;
+        //}
+
+    }
+
 
 }

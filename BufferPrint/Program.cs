@@ -33,7 +33,7 @@ namespace BufferPrint
 
         private static void RunBufferLoop()
         {
-            InventorObjectData objData = new InventorObjectData(bufferManager.GetAssemblyDocument());
+            InventorObjectData objData = new InventorObjectData(bufferManager.GetInventorAppInstance(), bufferManager.GetAssemblyDocument());
 
             int c = 0;
             while (isRunning)

@@ -1,18 +1,22 @@
 ﻿using BufferPrint;
 using Inventor;
+using System.Collections.Generic;
 
 namespace ProthesisSimulation
 {
     internal class Program
     {
+        //static BufferPrint.InventorObjectData inventorObject;
         static BufferPrint.BufferManager bufferManager = new();
-        static BufferPrint.InventorObjectData inventorObject;
         private static bool isRunning = false;
 
         static void Main(string[] args)
         {
             Console.WriteLine("---Welcome to shared memory manager---");
             bufferManager.CreateOrOpenSharedMemory();
+
+            bufferManager.SetInventorObjectData(new BufferPrint.InventorObjectData(bufferManager.GetInventorAppInstance(), bufferManager.GetAssemblyDocument()));
+
 
             if (!bufferManager.Init())
             {
@@ -22,6 +26,9 @@ namespace ProthesisSimulation
             else
             {
                 isRunning = true;
+
+                ReadInventorAssemblyData();
+
                 Console.WriteLine("Reading Buffer...");
                 ReedBufferLoop();
             }
@@ -29,21 +36,15 @@ namespace ProthesisSimulation
 
         private static void ReedBufferLoop()
         {
-            inventorObject = new BufferPrint.InventorObjectData(bufferManager.GetAssemblyDocument());
-
             int c = 0;
             while (isRunning)
             {
                 BufferManagerMessage msg = ReadFromBuffer(c);
                 c++;
 
-                msg = RequestInventorCommandData(inventorObject, msg);
+                msg = RequestInventorCommandData(bufferManager.GetInventorObjectData(), msg);
 
-                ReadInventorAssemblyData(inventorObject);
-
-                Thread.Sleep(1500);
-
-
+                Thread.Sleep(700);
             }
         }
 
@@ -54,9 +55,19 @@ namespace ProthesisSimulation
             return dequeueResult;
         }
 
-        private static void ReadInventorAssemblyData(InventorObjectData objData)
+        private static void ReadInventorAssemblyData()
         {
-            objData.ExtractAssemblyData();
+            //objData.ExtractAssemblyData();
+            MassCenterAccumulator myData = bufferManager.GetSubassemblyAccumulator();
+
+            IEnumerable<string> labelsData = myData.Labels;
+            foreach (string label in labelsData)
+            {
+                Console.WriteLine("Mass center accumulator data:");
+                Console.WriteLine($"Total Mass: {myData.GetTotalMass(label)}");
+                Point COM = myData.GetCenterOfMass(label, bufferManager.GetInventorAppInstance());
+                Console.WriteLine($"Total Center of Mass: x:{COM.X}, y:{COM.Y}, z:{COM.Z}");
+            }
         }
 
         private static BufferManagerMessage RequestInventorCommandData(InventorObjectData objData, BufferManagerMessage msg)

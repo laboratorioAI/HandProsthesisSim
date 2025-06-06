@@ -1,0 +1,66 @@
+{
+  "time": {
+    "t0": 0,
+    "tf": 40,
+    "dt": 0.001
+  },
+  "Tmag": {
+    "expression": "160 * sin(pi * 0.05 * t)"
+  },
+  "thetaInit": {
+    "theta1_init": 0,
+    "theta2_init": 0,
+    "theta3_init": 0
+  },
+  "omegaInit": {
+    "omega1_init": 0,
+    "omega2_init": 0,
+    "omega3_init": 0
+  },
+  "alphaInit": {
+    "alpha1_init": 0,
+    "alpha2_init": 0,
+    "alpha3_init": 0
+  },
+  "thetaLimits": {
+    "thetaMin_deg": 0,
+    "thetaMax_deg": 89
+  },
+  "simulation": {
+    "desiredFPS": 30,
+    "g": 9.81
+  },
+  "rotationMatrix": "R(phi) = [[cos(phi), -sin(phi)], [sin(phi), cos(phi)]]",
+  "basePhalanx": {
+    "L0": [0.021, 0.001],
+    "AP": [0.005, 0.009]
+  },
+  "points": {
+    "P0": [0.023, 0.006],
+    "P": [0.009, 0.007],
+    "P1": [0.006, 0.005],
+    "P2": [0.013, 0.003],
+    "P3": [0.007, 0.006],
+    "PFin": [0.029, 0.009]
+  },
+  "lengths_m": {
+    "L1": [0.033, 0.001],
+    "L2": [0.022, 0.001],
+    "L3": [0.029, 0]
+  },
+  "masses_kg": {
+    "m1": 0.008,
+    "m2": 0.008,
+    "m3": 0.008
+  },
+  "centersOfMass_m": {
+    "COM_L1": [0.017, 0],
+    "COM_L2": [0.015, 0],
+    "COM_L3": [0.013, 0]
+  },
+  "inertias_kgm2": {
+    "I1z": 1.25,
+    "I2z": 1.25,
+    "I3z": 1.25
+  }
+}

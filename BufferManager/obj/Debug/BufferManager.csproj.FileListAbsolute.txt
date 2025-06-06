@@ -4,3 +4,6 @@ D:\Repositorios_Politecnica\TesisProj\BufferManager\obj\Debug\BufferManager.cspr
 D:\Repositorios_Politecnica\TesisProj\BufferManager\obj\Debug\BufferManager.csproj.CoreCompileInputs.cache
 D:\Repositorios_Politecnica\TesisProj\BufferManager\obj\Debug\BufferManager.dll
 D:\Repositorios_Politecnica\TesisProj\BufferManager\obj\Debug\BufferManager.pdb
+D:\Repositorios_Politecnica\TesisProj\BufferManager\bin\Debug\Newtonsoft.Json.dll
+D:\Repositorios_Politecnica\TesisProj\BufferManager\bin\Debug\Newtonsoft.Json.xml
+D:\Repositorios_Politecnica\TesisProj\BufferManager\obj\Debug\BufferMa.54B6B15B.Up2Date
