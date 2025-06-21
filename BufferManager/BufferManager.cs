@@ -8,11 +8,14 @@ using System.Globalization;
 using System.IO.MemoryMappedFiles;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using static BufferManager.ManagementConstants;
+using static BufferPrint.MassCenterData;
 
 namespace BufferPrint
 {
@@ -23,7 +26,6 @@ namespace BufferPrint
         private BufferPrint.InventorObjectData _inventorObject;
         private ArrayList m_ComponentOccurrenceArray = new ArrayList();
         private ArrayList m_JointInfoArray = new ArrayList();
-        private Tree<string> m_tree;
 
         private MemoryMappedFile _mmf;
         private string _sharedMemoryName = "InventorValuesInput";
@@ -339,7 +341,7 @@ namespace BufferPrint
         {
             if (!Init())
             {
-                Console.WriteLine("Press any key to exit...");
+                Console.WriteLine("Buffer Manager Not initialized");
                 Console.ReadKey();
                 MassCenterAccumulator tmp = new MassCenterAccumulator();
                 return tmp;
@@ -355,11 +357,196 @@ namespace BufferPrint
             }
         }
 
-        //public string GetsubassemblyAccumulatorJson()
-        //{
-        //    var dtos = _inventorObject.accumulator.ToDTOs();
-        //    return JsonConvert.SerializeObject(dtos);
-        //}
+        public SpecialTransformation GetOriginTransformation()
+        {
+            if (!Init())
+            {
+                Console.WriteLine("Buffer Manager Not initialized");
+                Console.ReadKey();
+                return new SpecialTransformation();
+            }
+            else
+            {
+                if (!inventorDataExtracted)
+                {
+                    _inventorObject.ExtractAssemblyData();
+                    inventorDataExtracted = true;
+                }
+
+                UCSData tmpUCS = _inventorObject._ModelOrigin;
+
+                return new SpecialTransformation(
+                    tmpUCS.UCSMat.Cell[1, 1] / 100.0,
+                    tmpUCS.UCSMat.Cell[2, 2] / 100.0,
+                    tmpUCS.UCSMat.Cell[3, 3] / 100.0,
+                    tmpUCS.UCSMat.Cell[1, 2] / 100.0,
+                    tmpUCS.UCSMat.Cell[1, 3] / 100.0,
+                    tmpUCS.UCSMat.Cell[2, 1] / 100.0,
+                    tmpUCS.UCSMat.Cell[2, 3] / 100.0,
+                    tmpUCS.UCSMat.Cell[3, 1] / 100.0,
+                    tmpUCS.UCSMat.Cell[3, 2] / 100.0,
+                    tmpUCS.UCSMat.Cell[1, 4] / 100.0,
+                    tmpUCS.UCSMat.Cell[2, 4] / 100.0,
+                    tmpUCS.UCSMat.Cell[3, 4] / 100.0
+                );
+            }
+        }
+    
+        public SpecialTransformation ComputeRotationWithTheta(double theta1)
+        {
+            SpecialTransformation originTranformation = GetOriginTransformation();
+
+            List<UCSData> proximalPhalanxUCSs = GetSubassemblyAccumulator().GetUCSs("proximalThumb");
+
+            Matrix UCS2Data = null;
+
+            foreach(UCSData tmpUCS in proximalPhalanxUCSs)
+            {
+                Console.WriteLine(String.Format("UCS Name: %s", tmpUCS.Name));
+
+                if("UCS2" == tmpUCS.Name)
+                {
+                    UCS2Data = tmpUCS.UCSMat;
+                    break;
+                }
+            }
+
+            if(UCS2Data == null)
+            {
+                Console.WriteLine("UCS2 not found in the UCS list");
+                throw new Exception("UCS2 not found in the UCS list");
+            }
+
+            // Assuming 'invApp' is your Inventor.Application object
+            Inventor.TransientGeometry tg = m_InventorApplication.TransientGeometry;
+
+            // Create a new Matrix (4x4 identity matrix)
+            Inventor.Matrix T0 = tg.CreateMatrix();
+            T0.Cell[0, 0] = originTranformation.XX;
+            T0.Cell[0, 1] = originTranformation.XY;
+            T0.Cell[0, 2] = originTranformation.XZ;
+            T0.Cell[0, 3] = 0.0;
+            T0.Cell[1, 0] = originTranformation.YX;
+            T0.Cell[1, 1] = originTranformation.YY;
+            T0.Cell[1, 2] = originTranformation.YZ;
+            T0.Cell[1, 3] = 0.0;
+            T0.Cell[2, 0] = originTranformation.ZX;
+            T0.Cell[2, 1] = originTranformation.ZY;
+            T0.Cell[2, 2] = originTranformation.ZZ;
+            T0.Cell[2, 3] = 0.0;
+            T0.Cell[3, 0] = originTranformation.Trans_x;
+            T0.Cell[3, 1] = originTranformation.Trans_y;
+            T0.Cell[3, 2] = originTranformation.Trans_z;
+            T0.Cell[3, 3] = 1.0;
+
+            T0.Invert();
+
+            // Step 4: Convert UCS2Data to Inventor.Matrix (T1)
+            Inventor.Matrix T1 = tg.CreateMatrix();
+            for (int r = 1; r <= 4; r++)
+            {
+                for (int c = 1; c <= 4; c++)
+                {
+                    T1.set_Cell(r, c, UCS2Data.Cell[r - 1, c - 1]);
+                }
+            }
+
+            // Step 5: Compute T_base = T0⁻¹ * T1
+            Inventor.Matrix T_base = T0.Copy();
+            T_base.PreMultiplyBy(T1);  // T_base = T0⁻¹ * T1
+
+            // Step 6: Get rotation axis (x-axis of UCS1)
+            double[] x_axis = new double[]
+            {
+                originTranformation.XX,
+                originTranformation.YX,
+                originTranformation.ZX
+            };
+
+            // Step 7: Get origin translation
+            Inventor.Vector originVector = tg.CreateVector(
+                originTranformation.Trans_x,
+                originTranformation.Trans_y,
+                originTranformation.Trans_z
+            );
+
+            // Step 8: Build axis-angle rotation matrix (R_rot)
+            Inventor.Matrix R_rot = CreateAxisAngleRotationMatrix(theta1, x_axis);
+
+            // Step 9: Create translation matrices
+            Inventor.Matrix T_translate = tg.CreateMatrix();
+            T_translate.set_Cell(1, 4, originVector.X);
+            T_translate.set_Cell(2, 4, originVector.Y);
+            T_translate.set_Cell(3, 4, originVector.Z);
+
+            Inventor.Matrix T_translate_inv = tg.CreateMatrix();
+            T_translate_inv.set_Cell(1, 4, -originVector.X);
+            T_translate_inv.set_Cell(2, 4, -originVector.Y);
+            T_translate_inv.set_Cell(3, 4, -originVector.Z);
+
+            // Step 10: Apply rotation about the point (origin)
+            Inventor.Matrix R_about_point = T_translate.Copy();
+            R_about_point.PreMultiplyBy(R_rot);
+            R_about_point.PreMultiplyBy(T_translate_inv);
+
+            // Step 11: Final combined transformation
+            Inventor.Matrix T_combined = R_about_point.Copy();
+            T_combined.PreMultiplyBy(T_base);
+
+            // Step 12: Extract the 3x3 rotation and return it wrapped
+            SpecialTransformation result = new SpecialTransformation();
+
+            result.XX = T_combined.get_Cell(1, 1);
+            result.XY = T_combined.get_Cell(1, 2);
+            result.XZ = T_combined.get_Cell(1, 3);
+
+            result.YX = T_combined.get_Cell(2, 1);
+            result.YY = T_combined.get_Cell(2, 2);
+            result.YZ = T_combined.get_Cell(2, 3);
+
+            result.ZX = T_combined.get_Cell(3, 1);
+            result.ZY = T_combined.get_Cell(3, 2);
+            result.ZZ = T_combined.get_Cell(3, 3);
+
+            result.Trans_x = 0.0;
+            result.Trans_y = 0.0;
+            result.Trans_z = 0.0;
+
+            Console.WriteLine("Computed computeRotationWithTheta once");
+            return result;
+
+        }
+        private Inventor.Matrix CreateAxisAngleRotationMatrix(double angleRad, double[] axis)
+        {
+            // Normalize axis
+            double x = axis[0], y = axis[1], z = axis[2];
+            double norm = Math.Sqrt(x * x + y * y + z * z);
+            x /= norm;
+            y /= norm;
+            z /= norm;
+
+            double c = Math.Cos(angleRad);
+            double s = Math.Sin(angleRad);
+            double t = 1 - c;
+
+            Inventor.TransientGeometry tg = m_InventorApplication.TransientGeometry;
+            Inventor.Matrix R = tg.CreateMatrix();
+
+            R.set_Cell(1, 1, t * x * x + c);
+            R.set_Cell(1, 2, t * x * y - s * z);
+            R.set_Cell(1, 3, t * x * z + s * y);
+
+            R.set_Cell(2, 1, t * x * y + s * z);
+            R.set_Cell(2, 2, t * y * y + c);
+            R.set_Cell(2, 3, t * y * z - s * x);
+
+            R.set_Cell(3, 1, t * x * z - s * y);
+            R.set_Cell(3, 2, t * y * z + s * x);
+            R.set_Cell(3, 3, t * z * z + c);
+
+            return R;
+        }
+
 
     }
 
@@ -370,6 +557,7 @@ namespace BufferPrint
         public List<string> ComponentNames { get; private set; }
         public List<string> JointNames { get; private set; }
         public MassCenterAccumulator accumulator { get; private set; } = new MassCenterAccumulator();
+        public UCSData _ModelOrigin { get; private set; }
 
         private AssemblyDocument _assemblyDoc;
         private Application _inventorApp;
@@ -389,6 +577,9 @@ namespace BufferPrint
             if (doc.DocumentType == DocumentTypeEnum.kPartDocumentObject)
             {
                 // Leaf part — ignore, we only process at phalanx assembly level
+
+                // check for part ucs
+                CheckPartUCS(occurrence);
                 return;
             }
 
@@ -403,6 +594,23 @@ namespace BufferPrint
                 else
                 {
                     Console.WriteLine("ProcessOccurrence method: this ocurrence is not part of a finger set");
+                }
+            }
+        }
+
+        private void CheckPartUCS(ComponentOccurrence partOccurrence)
+        {
+            if (partOccurrence.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject)
+            {
+                PartComponentDefinition asmDef = (PartComponentDefinition)partOccurrence.Definition;
+                UserCoordinateSystems ucsList = asmDef.UserCoordinateSystems;
+
+                Console.WriteLine(string.Format("part - ucsList length: {0}", ucsList.Count));
+
+                foreach (UserCoordinateSystem ucs in ucsList)
+                {
+                    Console.WriteLine("assembly - UCS Name: " + ucs.Name);
+                    Matrix UCS_Mat = ucs.Transformation; // UCS → Global
                 }
             }
         }
@@ -513,6 +721,69 @@ namespace BufferPrint
                     accumulator.SetInertiaMatrix(phalanxName, I_rotated);
                 }
             }
+
+            if (phalanxOccurrence.DefinitionDocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
+            {
+                AssemblyComponentDefinition asmDef = (AssemblyComponentDefinition)phalanxOccurrence.Definition;
+                UserCoordinateSystems ucsList = asmDef.UserCoordinateSystems;
+
+                Console.WriteLine(string.Format("assembly - ucsList length: {0}", ucsList.Count));
+
+                foreach (UserCoordinateSystem ucs in ucsList)
+                {
+                    Console.WriteLine("assembly - UCS Name: " + ucs.Name);
+                    Matrix UCS_Mat = ucs.Transformation; // UCS → Global
+                    accumulator.AddUCS(phalanxName, ucs.Name, UCS_Mat);
+                }
+
+                Matrix ucs1_Mat = null;
+                Matrix ucs2_Mat = null;
+
+                List<UCSData> UCSs = accumulator.GetUCSs(phalanxName);
+                foreach (UCSData ucsData in UCSs)
+                {
+
+                    Console.WriteLine($"UCS Name: {ucsData.Name}");
+                    //Console.WriteLine(MatrixToString(ucsData.UCSMat));
+
+                    if (ucsData.Name == "UCS1")
+                    {
+                        ucs1_Mat = ucsData.UCSMat;
+                    }
+                    if (ucsData.Name == "UCS2")
+                    {
+                        ucs2_Mat = ucsData.UCSMat;
+                    }
+                }
+
+                if(ucs1_Mat != null && ucs2_Mat != null)
+                {
+                    Console.WriteLine("Processing transform...");
+                    Matrix m1To2 = ucs2_Mat.Copy();   // M2⁻¹ * M1
+                    m1To2.Invert();
+                    m1To2.TransformBy(ucs1_Mat);
+                    Matrix m2To1 = m1To2.Copy();
+                    m2To1.Invert();          // now transforms UCS-2 → UCS-1
+
+                    accumulator.SetSpecialTransformation(phalanxName, m2To1);
+
+                    Console.WriteLine(MatrixToString(m2To1));
+                }
+            }
+        }
+
+        private string MatrixToString(Matrix mat)
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            for (int r = 1; r <= 4; r++)
+            {
+                for (int c = 1; c <= 4; c++)
+                {
+                    sb.AppendFormat("{0,10:F4}", mat.get_Cell(r, c));
+                }
+                sb.AppendLine();
+            }
+            return sb.ToString();
         }
 
         double[,] Multiply(double[,] A, double[,] B)
@@ -548,10 +819,10 @@ namespace BufferPrint
                 string[] phalanxTypes = new[] { "proximal", "middle", "distal" };
                 string matchedType = phalanxTypes.FirstOrDefault(type => name.Contains(type));
 
-                if (name.Contains("1")) return $"{matchedType}Ring"; // Ring finger
-                if (name.Contains("2")) return $"{matchedType}Middle"; // Middle finger
-                if (name.Contains("3")) return $"{matchedType}Picky"; // Picky finger
-                if (name.Contains("4")) return $"{matchedType}Index"; // Index finger
+                if (name.Contains("1")) return $"{matchedType}Middle"; // Ring finger
+                if (name.Contains("2")) return $"{matchedType}Ring"; // Middle finger
+                if (name.Contains("3")) return $"{matchedType}Index"; // Picky finger
+                if (name.Contains("4")) return $"{matchedType}Picky"; // Index finger
                 if (name.Contains("5")) return $"{matchedType}Thumb"; // Thumb finger
             }
 
@@ -583,6 +854,19 @@ namespace BufferPrint
                 double[,] inertialMat = accumulator.GetInertiaMatrix(label);
 
                 //Console.WriteLine($"[Phalanx: {label}] Total Mass: {totalMass} kg, Center of Mass (local frame): X={com.X} cm, Y={com.Y} cm, Z={com.Z} cm, I_COMx={inertialMat[0, 0]} kg·mm², I_COMy={inertialMat[1, 1]} kg·mm², I_COMz={inertialMat[2, 2]} kg·mm²");
+            }
+
+            // getting root frame
+            AssemblyComponentDefinition asmDef = _assemblyDoc.ComponentDefinition;
+            UserCoordinateSystems ucsList = asmDef.UserCoordinateSystems;
+
+            Console.WriteLine(string.Format("root - ucsList length: {0}", ucsList.Count));
+
+            foreach (UserCoordinateSystem ucs in ucsList)
+            {
+                Console.WriteLine("root - UCS Name: " + ucs.Name);
+                Matrix UCS_Mat = ucs.Transformation; // UCS → Global
+                _ModelOrigin = new UCSData(ucs.Name, UCS_Mat);
             }
         }
 
@@ -693,71 +977,6 @@ namespace BufferPrint
         }
     }
 
-    public class ProthesisData
-    {
-        public SimpleFinger IndexFinger { get; set; }
-        public SimpleFinger MiddleFinger { get; set; }
-        public SimpleFinger RingFinger { get; set; }
-        public SimpleFinger PinkyFinger { get; set; }
-        public ComplexFinger Thumb { get; set; }
-
-        public ProthesisData()
-        {
-            IndexFinger = new SimpleFinger();
-            MiddleFinger = new SimpleFinger();
-            RingFinger = new SimpleFinger();
-            PinkyFinger = new SimpleFinger();
-            Thumb = new ComplexFinger();
-        }
-
-        public void PrintData()
-        {
-            Console.WriteLine("Index: " + IndexFinger);
-            Console.WriteLine("Middle: " + MiddleFinger);
-            Console.WriteLine("Ring: " + RingFinger);
-            Console.WriteLine("Pinky: " + PinkyFinger);
-            Console.WriteLine("Thumb: " + Thumb);
-        }
-    }
-
-    public class SimpleFinger
-    {
-        public double Joint1 { get; set; }
-        public double Joint2 { get; set; }
-        public double Joint3 { get; set; }
-
-        public SimpleFinger(double j1 = 0, double j2 = 0, double j3 = 0)
-        {
-            Joint1 = j1;
-            Joint2 = j2;
-            Joint3 = j3;
-        }
-
-        public override string ToString()
-        {
-            return $"Joints: [1: {Joint1}, 2: {Joint2}, 3: {Joint3}]";
-        }
-    }
-
-    public class ComplexFinger
-    {
-        public double Joint1 { get; set; }
-        public double Joint2 { get; set; }
-        public double Joint3 { get; set; }
-
-        public ComplexFinger(double j1 = 0, double j2 = 0, double j3 = 0)
-        {
-            Joint1 = j1;
-            Joint2 = j2;
-            Joint3 = j3;
-        }
-
-        public override string ToString()
-        {
-            return $"Joints: [1: {Joint1}, 2: {Joint2}, 3: {Joint3}]";
-        }
-    }
-
     public class BufferManagerMessage
     {
         public bool Status { get; set; }
@@ -772,46 +991,43 @@ namespace BufferPrint
         }
     }
 
-    public class TreeNode<T>
+    public class UCSData
     {
-        public T Data { get; set; }
-        public List<TreeNode<T>> Children { get; set; }
+        public string Name { get; set; }
+        public Matrix UCSMat { get; set; }
 
-        public TreeNode(T data)
+        public UCSData(string name, Matrix ucsMatrix)
         {
-            Data = data;
-            Children = new List<TreeNode<T>>();
+            Name = name;
+            UCSMat = ucsMatrix;
         }
-
-        public void AddChild(TreeNode<T> child)
+        public UCSData(UCSData myUCSData)
         {
-            Children.Add(child);
+            Name = myUCSData.Name;
+            UCSMat = myUCSData.UCSMat.Copy(); // Create a copy of the matrix to avoid reference issues
+        }
+        public SpecialTransformation GetMatDto()
+        {
+            Matrix UCSMat = this.UCSMat;
+
+            return new SpecialTransformation(
+                UCSMat.Cell[1, 1],
+                UCSMat.Cell[2, 2],
+                UCSMat.Cell[3, 3],
+                UCSMat.Cell[1, 2],
+                UCSMat.Cell[1, 3],
+                UCSMat.Cell[2, 1],
+                UCSMat.Cell[2, 3],
+                UCSMat.Cell[3, 1],
+                UCSMat.Cell[3, 2],
+                UCSMat.Cell[1, 4],
+                UCSMat.Cell[2, 4],
+                UCSMat.Cell[3, 4]
+                );
         }
     }
 
-    public class Tree<T>
-    {
-        public TreeNode<T> Root { get; set; }
-
-        public Tree(T rootData)
-        {
-            Root = new TreeNode<T>(rootData);
-        }
-
-        public void Traverse(TreeNode<T> node, int level = 0)
-        {
-            if (node != null)
-            {
-                Console.WriteLine(new string('-', level) + node.Data);
-                foreach (var child in node.Children)
-                {
-                    Traverse(child, level + 1);
-                }
-            }
-        }
-    }
-
-    // Struct to accumulate total mass and weighted COM sum
+    // Object to accumulate total mass and weighted COM sum
     public class MassCenterData
     {
         public double TotalMass { get; set; }
@@ -821,13 +1037,15 @@ namespace BufferPrint
 
         private double[,] _InertiaMatrix;
         private double[,] _InertiaMatrixCOM;
+        private List<UCSData> _UCSPositions = new List<UCSData>();
+        private Matrix _SpecialTransformation;
 
         public void Add(double mass, Inventor.Point com, bool convertToMm2 = true)
         {
             TotalMass += mass;
-            WeightedX += mass * com.X;
-            WeightedY += mass * com.Y;
-            WeightedZ += mass * com.Z;
+            WeightedX += mass * com.X / 100.0;
+            WeightedY += mass * com.Y / 100.0;
+            WeightedZ += mass * com.Z / 100.0;
         }
 
         public Inventor.Point GetCenterOfMass(Inventor.Application app)
@@ -875,6 +1093,54 @@ namespace BufferPrint
             }
         }
 
+        public class SpecialTransformation
+        {
+            public double XX { get; set; }
+            public double YY { get; set; }
+            public double ZZ { get; set; }
+            public double XY { get; set; }
+            public double XZ { get; set; }
+            public double YX { get; set; }
+            public double YZ { get; set; }
+            public double ZX { get; set; }
+            public double ZY { get; set; }
+            public double Trans_x { get; set; }
+            public double Trans_y { get; set; }
+            public double Trans_z { get; set; }
+
+            public SpecialTransformation(double xx, double yy, double zz, double xy, double xz, double yx, double yz, double zx, double zy, double trans_x, double trans_y, double trans_z)
+            {
+                this.XX = xx;
+                this.YY = yy;
+                this.ZZ = zz;
+                this.XY = xy;
+                this.XZ = xz;
+                this.YX = yx;
+                this.YZ = yz;
+                this.ZX = zx;
+                this.ZY = zy;
+                this.Trans_x = trans_x;
+                this.Trans_y = trans_y;
+                this.Trans_z = trans_z;
+            }
+
+            public SpecialTransformation()
+            {
+                this.XX = double.NaN;
+                this.YY = double.NaN;
+                this.ZZ = double.NaN;
+                this.XY = double.NaN;
+                this.XZ = double.NaN;
+                this.YX = double.NaN;
+                this.YZ = double.NaN;
+                this.ZX = double.NaN;
+                this.ZY = double.NaN;
+                this.Trans_x = double.NaN;
+                this.Trans_y = double.NaN;
+                this.Trans_z = double.NaN;
+            }
+        }
+
         public double[,] GetInertia() => _InertiaMatrix;
 
         public void SetInertia(double[,] inertia) => _InertiaMatrix = inertia;
@@ -882,6 +1148,45 @@ namespace BufferPrint
         public double[,] GetInertiaCOM() => _InertiaMatrixCOM;
 
         public void SetInertiaCOM(double[,] inertiaCOM) => _InertiaMatrixCOM = inertiaCOM;
+
+        public void AddUCS(string UCSName, Matrix UCSMatrix)
+        {
+            UCSData ucs = new UCSData(UCSName, UCSMatrix);
+            _UCSPositions.Add(ucs);
+        }
+
+        public List<UCSData> GetUCSs()
+        {
+            return _UCSPositions;
+        }
+    
+        public void SetSpecialTransformation(Matrix transformation)
+        {
+            _SpecialTransformation = transformation;
+        }
+
+        public Matrix GetSpecialTransformation()
+        {
+            return _SpecialTransformation;
+        }
+
+        public SpecialTransformation GetSpecialTransformationDTO()
+        {
+            return new SpecialTransformation(
+                _SpecialTransformation.Cell[1, 1],
+                _SpecialTransformation.Cell[2, 2],
+                _SpecialTransformation.Cell[3, 3],
+                _SpecialTransformation.Cell[1, 2],
+                _SpecialTransformation.Cell[1, 3],
+                _SpecialTransformation.Cell[2, 1],
+                _SpecialTransformation.Cell[2, 3],
+                _SpecialTransformation.Cell[3, 1],
+                _SpecialTransformation.Cell[3, 2],
+                _SpecialTransformation.Cell[1, 4] / 100.0,
+                _SpecialTransformation.Cell[2, 4] / 100.0,
+                _SpecialTransformation.Cell[3, 4] / 100.0
+                );
+        }
     }
 
     public class MassCenterDTO
@@ -892,9 +1197,9 @@ namespace BufferPrint
         public double[] InertiaMatrixFlat { get; set; } // 3x3 matrix as flat array (9 elements)
     }
 
-
     public class MassCenterAccumulator
     {
+        private UCSData _OriginUCS;
         private Dictionary<string, MassCenterData> _dataMap;
 
         public MassCenterAccumulator()
@@ -967,40 +1272,54 @@ namespace BufferPrint
             return current.GetInertia();
         }
 
-        //public List<MassCenterDTO> ToDTOs()
-        //{
-        //    var result = new List<MassCenterDTO>();
+        public void AddUCS(string label, string UCSName, Matrix UCS_Matrix)
+        {
+            if (!_dataMap.ContainsKey(label))
+                _dataMap[label] = new MassCenterData();
 
-        //    foreach (var kvp in _dataMap)
-        //    {
-        //        var label = kvp.Key;
-        //        var data = kvp.Value;
+            MassCenterData current = _dataMap[label];
+            current.AddUCS(UCSName, UCS_Matrix);
+            _dataMap[label] = current;
+        }
 
-        //        var com = data.GetCenterOfMass(null);  // Replace with appropriate app or adapt data to store XYZ directly
+        public List<UCSData> GetUCSs(string label)
+        {
+            MassCenterData current = _dataMap[label];
+            return current.GetUCSs();
+        }
 
-        //        double[] comArray = new double[] { com.X, com.Y, com.Z };
+        public void SetSpecialTransformation(string label, Matrix transformation)
+        {
+            if (!_dataMap.ContainsKey(label))
+                _dataMap[label] = new MassCenterData();
 
-        //        double[,] matrix = data.GetInertia();
-        //        double[] inertiaFlat = matrix != null ?
-        //            new double[] {
-        //        matrix[0,0], matrix[0,1], matrix[0,2],
-        //        matrix[1,0], matrix[1,1], matrix[1,2],
-        //        matrix[2,0], matrix[2,1], matrix[2,2]
-        //            } : new double[9];
+            MassCenterData current = _dataMap[label];
+            current.SetSpecialTransformation(transformation);
+            _dataMap[label] = current;
+        }
 
-        //        result.Add(new MassCenterDTO
-        //        {
-        //            Label = label,
-        //            TotalMass = data.TotalMass,
-        //            CenterOfMass = comArray,
-        //            InertiaMatrixFlat = inertiaFlat
-        //        });
-        //    }
+        public Matrix GetSpecialTransformation(string label)
+        {
+            MassCenterData current = _dataMap[label];
+            return current.GetSpecialTransformation();
+        }
+        public MassCenterData.SpecialTransformation GetSpecialTransformationDTO(string label)
+        {
+            MassCenterData current = _dataMap[label];
+            return current.GetSpecialTransformationDTO();
+        }
+    
+        public UCSData GetOriginUCS()
+        {
+            return _OriginUCS;
+        }
 
-        //    return result;
-        //}
+        private void SetOriginUCS(UCSData OriginUCS)
+        {
+            _OriginUCS = OriginUCS;
+        }
+
+
 
     }
-
-
 }

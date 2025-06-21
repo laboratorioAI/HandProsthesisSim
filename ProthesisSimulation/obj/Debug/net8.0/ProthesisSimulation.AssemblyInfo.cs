@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ProthesisSimulation")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bc7e21497f502fd0fb90b067cad8e14fa54b84f2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c12df5535bd79aeb9c765168dfbf842fc7fe0e87")]
 [assembly: System.Reflection.AssemblyProductAttribute("ProthesisSimulation")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ProthesisSimulation")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

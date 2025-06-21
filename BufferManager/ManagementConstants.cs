@@ -67,7 +67,6 @@ namespace BufferManager
             public static readonly Dictionary<BufferManagerElement, string> Map = new Dictionary<BufferManagerElement, string>
             {
                 // LEFT THUMB
-                { BufferManagerElement.LThB__, "LeftThumbBase" },
                 { BufferManagerElement.LThPxJ, "LeftThumbProximal" },
                 { BufferManagerElement.LThMdJ, "LeftThumbMiddle" },
                 { BufferManagerElement.LThDsJ, "LeftThumbDistal" },
@@ -93,10 +92,9 @@ namespace BufferManager
                 { BufferManagerElement.LPkDsJ, "LeftPinkyDistal" },
 
                 // RIGHT THUMB
-                { BufferManagerElement.RThB__, "RightThumbBase" },
-                { BufferManagerElement.RThPxJ, "RightThumbProximal" },
-                { BufferManagerElement.RThMdJ, "RightThumbMiddle" },
-                { BufferManagerElement.RThDsJ, "RightThumbDistal" },
+                { BufferManagerElement.RThPxJ, "Rotational:13" },
+                { BufferManagerElement.RThMdJ, "Rotational:14" },
+                { BufferManagerElement.RThDsJ, "Rotational:15" },
 
                 // RIGHT INDEX
                 { BufferManagerElement.RInPxJ, "Rotational:9" },

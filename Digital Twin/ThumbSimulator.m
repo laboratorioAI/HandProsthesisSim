@@ -1,9 +1,11 @@
-classdef FingerSimulator
+classdef ThumbSimulator
     properties
         % === Raw configuration ===
         config                          % Original JSON structure loaded as struct
         bufferManager
         dataAccumulator
+        originTransformation
+        O1_Mat
         digitalTwinVisual logical = false
     
         % === Time settings ===
@@ -26,8 +28,9 @@ classdef FingerSimulator
         AP double                       % Fixed anchor point of tendon [2x1]
     
         % === Key points (all as 2x1 column vectors) ===
+        O0 double                       % Origin
         P0 double
-        P double
+        % P double
         P1 double
         P2 double
         P3 double
@@ -37,6 +40,10 @@ classdef FingerSimulator
         L1 double
         L2 double
         L3 double
+
+        % === gears radios ===
+        radioProximalThumb double
+        radioPuley double
     
         % === Masses ===
         m1 double
@@ -93,7 +100,7 @@ classdef FingerSimulator
     end
 
     methods
-        function obj = FingerSimulator(configFile)
+        function obj = ThumbSimulator(configFile)
             obj.config = obj.loadConfigFile(configFile);
             obj = obj.initializeParameters();
         end
@@ -120,34 +127,40 @@ classdef FingerSimulator
             obj.thetaMax = deg2rad(c.thetaLimits.thetaMax_deg);
             obj.desiredFPS = c.simulation.desiredFPS;
             obj.g = c.simulation.g;
-            obj.R = @(phi)[cos(phi), -sin(phi); sin(phi), cos(phi)];
+            obj.R = @(phi)[cos(phi), -sin(phi), 0;
+               sin(phi),  cos(phi), 0;
+               0       ,  0       , 1];
 
             % Geometry (converted to column vectors)
-            obj.L0 = obj.columnVec(c.basePhalanx.L0);
-            obj.AP = obj.columnVec(c.basePhalanx.AP);
-        
+            % obj.L0 = obj.columnVec(c.basePhalanx.L0);
+            % obj.AP = obj.columnVec(c.basePhalanx.AP);
+            
             obj.P0 = obj.columnVec(c.points.P0);
-            obj.P  = obj.columnVec(c.points.P);
+            % obj.P  = obj.columnVec(c.points.P);
             obj.P1 = obj.columnVec(c.points.P1);
             obj.P2 = obj.columnVec(c.points.P2);
             obj.P3 = obj.columnVec(c.points.P3);
             obj.PFin = obj.columnVec(c.points.PFin);
         
+            obj.L0 = obj.columnVec(c.lengths_m.L0);
             obj.L1 = obj.columnVec(c.lengths_m.L1);
             obj.L2 = obj.columnVec(c.lengths_m.L2);
             obj.L3 = obj.columnVec(c.lengths_m.L3);
+
+            obj.radioProximalThumb = c.radioProximalThumb;
+            obj.radioPuley = c.radioPuley;
         
-            obj.m1 = c.masses_kg.m1;
-            obj.m2 = c.masses_kg.m2;
-            obj.m3 = c.masses_kg.m3;
+            % obj.m1 = c.masses_kg.m1;
+            % obj.m2 = c.masses_kg.m2;
+            % obj.m3 = c.masses_kg.m3;
         
-            obj.COM_L1 = obj.columnVec(c.centersOfMass_m.COM_L1);
-            obj.COM_L2 = obj.columnVec(c.centersOfMass_m.COM_L2);
-            obj.COM_L3 = obj.columnVec(c.centersOfMass_m.COM_L3);
+            % obj.COM_L1 = obj.columnVec(c.centersOfMass_m.COM_L1);
+            % obj.COM_L2 = obj.columnVec(c.centersOfMass_m.COM_L2);
+            % obj.COM_L3 = obj.columnVec(c.centersOfMass_m.COM_L3);
         
-            obj.I1z = c.inertias_kgm2.I1z;
-            obj.I2z = c.inertias_kgm2.I2z;
-            obj.I3z = c.inertias_kgm2.I3z;
+            % obj.I1z = c.inertias_kgm2.I1z;
+            % obj.I2z = c.inertias_kgm2.I2z;
+            % obj.I3z = c.inertias_kgm2.I3z;
 
             obj.theta1_init = c.thetaInit.theta1_init;
             obj.theta2_init = c.thetaInit.theta2_init;
@@ -212,14 +225,30 @@ classdef FingerSimulator
             obj.alpha2_init = a_init2;
             obj.alpha3_init = a_init3;
 
-            % === Torque functions ===
-            tau1 = @(th3, th2, th1, t) torqueLink1_vFinal(th2, th1, TMag(t), obj.COM_L1, obj.AP, obj.P, obj.P0, obj.P1, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m1, obj.R);
-            tau2 = @(th3, th2, th1, t) torqueLink2_vFinal(th3, th2, th1, TMag(t), obj.COM_L2, obj.P0, obj.P1, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m2, obj.R);
-            tau3 = @(th3, th2, th1, t) torqueLink3_vFinal(th3, th2, th1, TMag(t), obj.COM_L3, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m3, obj.R);
+            % === Set Mass and com ===
+            DTO_COM_L1 = obj.dataAccumulator.GetCenterOfMassDTO("proximalThumb");
+            obj.COM_L1 = [DTO_COM_L1.X; DTO_COM_L1.Y; DTO_COM_L1.Z];
+            
+            DTO_COM_L2 = obj.dataAccumulator.GetCenterOfMassDTO("middleThumb");
+            obj.COM_L2 = [DTO_COM_L2.X; DTO_COM_L2.Y; DTO_COM_L2.Z];
 
-            getTorque1Only = @(th3, th2, th1, t) obj.getFirstOutput(th3, th2, th1, t, tau1);
-            getTorque2Only = @(th3, th2, th1, t) obj.getFirstOutput(th3, th2, th1, t, tau2);
-            getTorque3Only = @(th3, th2, th1, t) obj.getFirstOutput(th3, th2, th1, t, tau3);
+            DTO_COM_L3 = obj.dataAccumulator.GetCenterOfMassDTO("distalThumb");
+            obj.COM_L3 = [DTO_COM_L3.X; DTO_COM_L3.Y; DTO_COM_L3.Z];
+
+            obj.m1 = obj.dataAccumulator.GetTotalMass("proximalThumb");
+            obj.m2 = obj.dataAccumulator.GetTotalMass("middleThumb");
+            obj.m3 = obj.dataAccumulator.GetTotalMass("distalThumb");
+
+            % === Torque functions ===
+            torqueMotor = TMag;
+
+            tau1 = @(th3, th2, th1, t, specialTransform) torqueLink1_thumb(th1, obj.COM_L1, obj.m1, obj.g, torqueMotor(t), obj.radioPuley, obj.radioProximalThumb, obj.R, specialTransform);
+            tau2 = @(th3, th2, th1, t, specialTransform) torqueLink2_thumb(th3, th2, th1, TMag(t), obj.COM_L2, obj.P0, obj.P1, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m2, obj.R, specialTransform);
+            tau3 = @(th3, th2, th1, t, specialTransform) torqueLink3_thumb(th3, th2, th1, TMag(t), obj.COM_L3, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m3, obj.R, specialTransform);
+
+            getTorque1Only = @(th1, t, specialTransform) obj.getFirstOutput(0, 0, th1, t, tau1, specialTransform);
+            getTorque2Only = @(th3, th2, th1, t, specialTransform) obj.getFirstOutput(th3, th2, th1, t, tau2, specialTransform);
+            getTorque3Only = @(th3, th2, th1, t, specialTransform) obj.getFirstOutput(th3, th2, th1, t, tau3, specialTransform);
         
             obj.Y1 = zeros(2, obj.N);
             obj.Y2 = zeros(2, obj.N);
@@ -238,24 +267,33 @@ classdef FingerSimulator
             obj.alpha3(:, 1) = obj.alpha3_init;
 
             % === Inertia Calculation ===
-        
-            f1 = @(t, th_3, th_2, y, I) [ ...
+            
+            f1 = @(t, y, I, specialTransform) [ ...
                 y(2);
-                % getTorque1Only(th_3, th_2, y(1), t) / obj.I1z ...
-                getTorque1Only(th_3, th_2, y(1), t) / I ...
+                getTorque1Only(y(1), t, specialTransform) / I ...
             ];
         
-            f2 = @(t, th_3, y, th_1, I) [ ...
+            f2 = @(t, th_3, y, th_1, I, specialTransform) [ ...
                 y(2);
                 % getTorque2Only(th_3, y(1), th_1, t) / obj.I2z ...
-                getTorque2Only(th_3, y(1), th_1, t) / I ...
+                getTorque2Only(th_3, y(1), th_1, t, specialTransform) / I ...
             ];
         
-            f3 = @(t, y, th_2, th_1, I) [ ...
+            f3 = @(t, y, th_2, th_1, I, specialTransform) [ ...
                 y(2);
                 % getTorque3Only(y(1), th_2, th_1, t) / obj.I3z ...
-                getTorque3Only(y(1), th_2, th_1, t) / I ...
+                getTorque3Only(y(1), th_2, th_1, t, specialTransform) / I ...
             ];
+
+
+            specialTrans = [];
+            for i = 1:numel(phanlanxIds)
+                phalanxId = phanlanxIds{i};
+                
+                if contains(phalanxId, "proximal")
+                    specialTrans = obj.dataAccumulator.GetSpecialTransformationDTO(phalanxId);
+                end
+            end
         
             for k = 2:obj.N
                 t = obj.time(k-1);
@@ -269,18 +307,24 @@ classdef FingerSimulator
 
                 % === Finger Phalanx Data Gathering ===
                 % proximalInertia, middleInertia, distalInertia = GetPhalanxInfo(phanlanxIds);
-                [proxInertia, middInertia, distInertia] = obj.GetPhalanxsInertias(phanlanxIds, y1(1), y2(1), y3(1));
-            
+                [proxInertiaZ, middInertiaZ, distInertiaZ] = obj.GetPhalanxsInertias(phanlanxIds, y1(1), y2(1), y3(1));
+                
+                obj.I3z = distInertiaZ;
+                obj.I2z = middInertiaZ;
+                obj.I1z = proxInertiaZ;
+
                 % CALCULATIONS THIRD PHALANX
-                k1 = f3(t             , y3              , y2(1), y1(1), distInertia);
-                k2 = f3(t+obj.dt/2    , y3+obj.dt/2*k1  , y2(1), y1(1), distInertia);
-                k3 = f3(t+obj.dt/2    , y3+obj.dt/2*k2  , y2(1), y1(1), distInertia);
-                k4 = f3(t+obj.dt      , y3+obj.dt  *k3  , y2(1), y1(1), distInertia);
+
+                k1 = f3(t             , y3              , y2(1), y1(1), obj.I3z, specialTrans);
+                k2 = f3(t+obj.dt/2    , y3+obj.dt/2*k1  , y2(1), y1(1), obj.I3z, specialTrans);
+                k3 = f3(t+obj.dt/2    , y3+obj.dt/2*k2  , y2(1), y1(1), obj.I3z, specialTrans);
+                k4 = f3(t+obj.dt      , y3+obj.dt  *k3  , y2(1), y1(1), obj.I3z, specialTrans);
             
                 y3Next = y3 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
+
             
                 % ---------- HARD‑STOP LOGIC ---------------------------------
-                [tau_now, T3_2] = tau3(y3Next(1), y2(1), 0, obj.time(k));                % torque at this step
+                [tau_now, T3_2] = tau3(y3Next(1), y2(1), 0, obj.time(k), specialTrans);                % torque at this step
             
                 if y3Next(1) < obj.thetaMin
                     y3Next(1) = obj.thetaMin;
@@ -300,18 +344,16 @@ classdef FingerSimulator
             
                 obj.Y3(:,k) = y3Next;
             
-            
-            
                 % CALCULATIONS SECOND PHALANX
-                k1 = f2(t             , y3Next(1) , y2              , y1(1), middInertia);
-                k2 = f2(t+obj.dt/2    , y3Next(1) , y2+obj.dt/2*k1  , y1(1), middInertia);
-                k3 = f2(t+obj.dt/2    , y3Next(1) , y2+obj.dt/2*k2  , y1(1), middInertia);
-                k4 = f2(t+obj.dt      , y3Next(1) , y2+obj.dt  *k3  , y1(1), middInertia);
+                k1 = f2(t             , y3Next(1) , y2              , y1(1), obj.I2z, specialTrans);
+                k2 = f2(t+obj.dt/2    , y3Next(1) , y2+obj.dt/2*k1  , y1(1), obj.I2z, specialTrans);
+                k3 = f2(t+obj.dt/2    , y3Next(1) , y2+obj.dt/2*k2  , y1(1), obj.I2z, specialTrans);
+                k4 = f2(t+obj.dt      , y3Next(1) , y2+obj.dt  *k3  , y1(1), obj.I2z, specialTrans);
             
                 y2Next = y2 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
             
                 % ---------- HARD‑STOP LOGIC ---------------------------------
-                [tau_now, T2_1] = tau2(y3Next(1), y2Next(1), 0, obj.time(k));
+                [tau_now, T2_1] = tau2(y3Next(1), y2Next(1), 0, obj.time(k), specialTrans);
             
                 if y2Next(1) < obj.thetaMin
                     y2Next(1) = obj.thetaMin;
@@ -331,35 +373,30 @@ classdef FingerSimulator
             
                 obj.Y2(:,k) = y2Next;
             
-            
-                
                 % CALCULATIONS FIRST PHALANX
-                k1 = f1(t             , y3Next(1), y2Next(1), y1             , proxInertia);
-                k2 = f1(t+obj.dt/2    , y3Next(1), y2Next(1), y1+obj.dt/2*k1 , proxInertia);
-                k3 = f1(t+obj.dt/2    , y3Next(1), y2Next(1), y1+obj.dt/2*k2 , proxInertia);
-                k4 = f1(t+obj.dt      , y3Next(1), y2Next(1), y1+obj.dt  *k3 , proxInertia);
-            
+                k1 = f1(t             , y1             , obj.I1z, specialTrans);
+                k2 = f1(t+obj.dt/2    , y1+obj.dt/2*k1 , obj.I1z, specialTrans);
+                k3 = f1(t+obj.dt/2    , y1+obj.dt/2*k2 , obj.I1z, specialTrans);
+                k4 = f1(t+obj.dt      , y1+obj.dt  *k3 , obj.I1z, specialTrans);
+
                 y1Next = y1 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
-            
+
                 % ---------- HARD‑STOP LOGIC ---------------------------------
-                [tau_now, T1_0] = tau1(y3Next(1), y2Next(1), y1Next(1), obj.time(k));
-            
+                [tau_now, T0] = tau1(y3Next(1), y2Next(1), y1Next(1), obj.time(k), specialTrans);
+
                 if y1Next(1) < obj.thetaMin
                     y1Next(1) = obj.thetaMin;
                 elseif y1Next(1) > obj.thetaMax
                     y1Next(1) = obj.thetaMax;
                 end
-            
-                if y1Next(1) == obj.thetaMin
-                    y1Next(2) = 0;
-                    obj.alpha1(k) = 0;
-                elseif y1Next(1) == obj.thetaMax
+                
+                if y1Next(1) == obj.thetaMin || y1Next(1) == obj.thetaMax
                     y1Next(2) = 0;
                     obj.alpha1(k) = 0;
                 else
-                    obj.alpha1(k) = tau_now/obj.I2z;
+                    obj.alpha1(k) = tau_now / obj.I1z;
                 end
-            
+
                 obj.Y1(:,k) = y1Next;
             end
 
@@ -388,9 +425,9 @@ classdef FingerSimulator
             obj.results.omega1 = obj.theta1(1,:);
             obj.results.omega2 = obj.theta2(1,:);
             obj.results.omega3 = obj.theta3(1,:);
-            obj.results.tau1_v = arrayfun(@(th3, th2, th1, t) tau1(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
-            obj.results.tau2_v = arrayfun(@(th3, th2, th1, t) tau2(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
-            obj.results.tau3_v = arrayfun(@(th3, th2, th1, t) tau3(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
+            obj.results.tau1_v = arrayfun(@(th3, th2, th1, t) tau1(th3, th2, th1, t, specialTrans), obj.theta3, obj.theta2, obj.theta1, obj.time);
+            obj.results.tau2_v = arrayfun(@(th3, th2, th1, t) tau2(th3, th2, th1, t, specialTrans), obj.theta3, obj.theta2, obj.theta1, obj.time);
+            obj.results.tau3_v = arrayfun(@(th3, th2, th1, t) tau3(th3, th2, th1, t, specialTrans), obj.theta3, obj.theta2, obj.theta1, obj.time);
         end
 
         function [proximalInertia, middleInertia, distalInertia] = GetPhalanxsInertias(obj, phalanxIds, th1, th2, th3)
@@ -426,7 +463,7 @@ classdef FingerSimulator
 
                 if contains(phalanxId, "middle")
                     % Rotation origin for middle phalanx
-                    O2 = [0; 0];  % Assume middle joint is at origin in local frame
+                    O2 = [0; 0; 0];  % Assume middle joint is at origin in local frame
                     
                     % Compute position of distal joint (O3) using length L2 and rotation th2
                     O3 = O2 + obj.R(th2) * obj.L2;  % obj.R is likely a 2x2 rotation matrix function
@@ -437,7 +474,7 @@ classdef FingerSimulator
                 
                     % Get COM of the distal phalanx in its local frame and convert to global
                     DTO_COM_L3 = obj.dataAccumulator.GetCenterOfMassDTO(distalFingerName);
-                    tmpCOM_L3 = O3 + obj.R(th2 + th3) * [DTO_COM_L3.X; DTO_COM_L3.Y];
+                    tmpCOM_L3 = O3 + obj.R(th2 + th3) * [DTO_COM_L3.X; DTO_COM_L3.Y; DTO_COM_L3.Z];
                 
                     % Inertia of distal phalanx about its own local frame (assumed at joint O3)
                     I3_Net = obj.dataAccumulator.GetInertiaMatrix(distalFingerName);
@@ -466,63 +503,62 @@ classdef FingerSimulator
                 end
 
                 if contains(phalanxId, "proximal")
-                    % Rotation origin for proximal phalanx
-                    O1 = [0; 0];  % assume joint 1 is origin of global or local frame
-                
-                    % Positions of joint 2 and 3
-                    O2 = O1 + obj.R(th1) * obj.L1;
-                    O3 = O2 + obj.R(th1 + th2) * obj.L2;
-                
                     % Extract base name (e.g., 'Index') and build phalanx names
                     fingerBaseName = erase(phalanxId, "proximal");
                     middleFingerName = strcat("middle", fingerBaseName);
                     distalFingerName = strcat("distal", fingerBaseName);
-                
-                    % --- DISTAL PHALANX CONTRIBUTION ---
-                
+                    
+                    % --- Fixed transformation from proximal to middle frame ---
+                    O1_2_STrans = obj.dataAccumulator.GetSpecialTransformationDTO(phalanxId);
+                    R_mp = [O1_2_STrans.XX, O1_2_STrans.XY, O1_2_STrans.XZ;
+                        O1_2_STrans.YX, O1_2_STrans.YY, O1_2_STrans.YZ;
+                        O1_2_STrans.ZX, O1_2_STrans.ZY, O1_2_STrans.ZZ];  % Rotation from proximal to middle base
+                    r_mp = [O1_2_STrans.Trans_x; O1_2_STrans.Trans_y; O1_2_STrans.Trans_z];
+                    
+                    % --- Joint positions ---
+                    O1 = [0; 0; 0];
+                    O2 = O1 + R_mp * r_mp;
+                    O3 = O2 + R_mp * obj.R(th2) * obj.L2;
+                    
+                    % --- Joint rotations ---
+                    R2 = obj.R(th2);
+                    R3 = obj.R(th3);
+                    
+                    % === DISTAL PHALANX CONTRIBUTION ===
+                    R_d_to_p = R_mp * R2 * R3;
                     DTO_COM_L3 = obj.dataAccumulator.GetCenterOfMassDTO(distalFingerName);
-                    tmpCOM_L3 = O3 + obj.R(th1 + th2 + th3) * [DTO_COM_L3.X; DTO_COM_L3.Y];
-                
-                    I3_net = obj.dataAccumulator.GetInertiaMatrix(distalFingerName);
-                    I3_mat = double(I3_net);
-                    I3zz = I3_mat(3, 3);
-                
-                    mass_L3 = obj.dataAccumulator.GetTotalMass(distalFingerName);
+                    COM_L3_local = [DTO_COM_L3.X; DTO_COM_L3.Y; DTO_COM_L3.Z];
+                    tmpCOM_L3 = O3 + R_d_to_p * COM_L3_local;
                     r3 = tmpCOM_L3 - O1;
-                    d3_squared = r3(1)^2 + r3(2)^2;
-                    I3zz_shifted = I3zz + mass_L3 * d3_squared;
-                
-                    % --- MIDDLE PHALANX CONTRIBUTION ---
-                
+                    I3_local = double(obj.dataAccumulator.GetInertiaMatrix(distalFingerName));
+                    mass_L3 = obj.dataAccumulator.GetTotalMass(distalFingerName);
+                    I3_rot = R_d_to_p * I3_local * R_d_to_p';
+                    I3_shift = mass_L3 * ((r3' * r3) * eye(3) - (r3 * r3'));
+                    I3_total = I3_rot + I3_shift;
+                    
+                    % === MIDDLE PHALANX CONTRIBUTION ===
+                    R_m_to_p = R_mp * R2;
                     DTO_COM_L2 = obj.dataAccumulator.GetCenterOfMassDTO(middleFingerName);
-                    tmpCOM_L2 = O2 + obj.R(th1 + th2) * [DTO_COM_L2.X; DTO_COM_L2.Y];
-                
-                    I2_net = obj.dataAccumulator.GetInertiaMatrix(middleFingerName);
-                    I2_mat = double(I2_net);
-                    I2zz = I2_mat(3, 3);
-                
-                    mass_L2 = obj.dataAccumulator.GetTotalMass(middleFingerName);
+                    COM_L2_local = [DTO_COM_L2.X; DTO_COM_L2.Y; DTO_COM_L2.Z];
+                    tmpCOM_L2 = O2 + R_m_to_p * COM_L2_local;
                     r2 = tmpCOM_L2 - O1;
-                    d2_squared = r2(1)^2 + r2(2)^2;
-                    I2zz_shifted = I2zz + mass_L2 * d2_squared;
-                
-                    % --- PROXIMAL PHALANX CONTRIBUTION ---
-                
-                    I1_net = obj.dataAccumulator.GetInertiaMatrix(phalanxId);
-                    I1_mat = double(I1_net);
-                    I1zz = I1_mat(3, 3);  % inertia about its own joint (O1)
-                
-                    % --- TOTAL EFFECTIVE INERTIA at Joint 1 (proximal)
-                    proximalInertia = I1zz + I2zz_shifted + I3zz_shifted;
-                
-                    % fprintf("Effective proximal inertia at joint [Z]: %.6f\n", proximalInertia);
+                    I2_local = double(obj.dataAccumulator.GetInertiaMatrix(middleFingerName));
+                    mass_L2 = obj.dataAccumulator.GetTotalMass(middleFingerName);
+                    I2_rot = R_m_to_p * I2_local * R_m_to_p';
+                    I2_shift = mass_L2 * ((r2' * r2) * eye(3) - (r2 * r2'));
+                    I2_total = I2_rot + I2_shift;
+                    
+                    % === PROXIMAL PHALANX CONTRIBUTION ===
+                    I1_local = double(obj.dataAccumulator.GetInertiaMatrix(phalanxId));
+                    
+                    % === TOTAL EFFECTIVE INERTIA (in proximal frame) ===
+                    proximalInertia = I1_local(3,3) + I2_total(3,3) + I3_total(3,3);
                 end
-
             end
         end
 
         function plotResults(obj)
-            tau1 = @(th3, th2, th1, t) torqueLink1_vFinal(th2, th1, obj.Tmag(t), obj.COM_L1, obj.AP, obj.P, obj.P0, obj.P1, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m1, obj.R);
+            % tau1 = @(th3, th2, th1, t) torqueLink1_vFinal(th2, th1, obj.Tmag(t), obj.COM_L1, obj.AP, obj.P, obj.P0, obj.P1, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m1, obj.R);
             tau2 = @(th3, th2, th1, t) torqueLink2_vFinal(th3, th2, th1, obj.Tmag(t), obj.COM_L2, obj.P0, obj.P1, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m2, obj.R);
             tau3 = @(th3, th2, th1, t) torqueLink3_vFinal(th3, th2, th1, obj.Tmag(t), obj.COM_L3, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m3, obj.R);
             
@@ -566,22 +602,22 @@ classdef FingerSimulator
             %plotDoubleFinger(theta2, theta3, tf, COM_L1, COM_L2, COM_L3, L1, L2, L3, P0, P1, P2, P3, PFin, R, desiredFPS);
             
             
-            tau1_v = arrayfun(@(th3, th2, th1 ,t) tau1(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
-            
-            % plots
-            figure('Name','First Phalanx Dynamics','Color','w');
-            subplot(4,1,1), plot(obj.time, tau1_v,'LineWidth',1.2),  grid on
-            ylabel('\tau_{1z}  [N·m]'),   title('Applied Torque')
-            
-            subplot(4,1,2), plot(obj.time, rad2deg(obj.theta1),'LineWidth',1.2), grid on
-            ylabel('\theta_{1z}  [deg]'),  title('Angular Position')
-            
-            subplot(4,1,3), plot(obj.time, rad2deg(obj.omega2),'LineWidth',1.2), grid on
-            ylabel('\omega_{1z}  [deg/s]'), title('Angular Velocity')
-            
-            subplot(4,1,4), plot(obj.time, rad2deg(obj.alpha2),'LineWidth',1.2), grid on
-            ylabel('\alpha_{1z}  [deg/s^2]'), xlabel('Time  [s]')
-            title('Angular Acceleration (net)')
+            % tau1_v = arrayfun(@(th3, th2, th1 ,t) tau1(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
+            % 
+            % % plots
+            % figure('Name','First Phalanx Dynamics','Color','w');
+            % subplot(4,1,1), plot(obj.time, tau1_v,'LineWidth',1.2),  grid on
+            % ylabel('\tau_{1z}  [N·m]'),   title('Applied Torque')
+            % 
+            % subplot(4,1,2), plot(obj.time, rad2deg(obj.theta1),'LineWidth',1.2), grid on
+            % ylabel('\theta_{1z}  [deg]'),  title('Angular Position')
+            % 
+            % subplot(4,1,3), plot(obj.time, rad2deg(obj.omega2),'LineWidth',1.2), grid on
+            % ylabel('\omega_{1z}  [deg/s]'), title('Angular Velocity')
+            % 
+            % subplot(4,1,4), plot(obj.time, rad2deg(obj.alpha2),'LineWidth',1.2), grid on
+            % ylabel('\alpha_{1z}  [deg/s^2]'), xlabel('Time  [s]')
+            % title('Angular Acceleration (net)')
             
             plotTripleFinger(obj.theta1, obj.theta2, obj.theta3, obj.tf, obj.COM_L1, obj.COM_L2, obj.COM_L3, obj.L0, obj.L1, obj.L2, obj.L3, obj.AP, obj.P, obj.P0, obj.P1, obj.P2, obj.P3, obj.PFin, obj.R, obj.desiredFPS);
         end
@@ -613,6 +649,8 @@ classdef FingerSimulator
                 theta_array1 = obj.theta1;
             end
 
+            specialTransformation = obj.dataAccumulator.GetSpecialTransformationDTO("proximalThumb");
+
             % === FRAME SELECTION LOGIC ===
             totalFrames = length(theta_array2);
             maxFramesToShow = round(maxDuration * desiredFPS);  % e.g., 10s * 30 fps = 300 frames
@@ -623,51 +661,56 @@ classdef FingerSimulator
                 indices = 1:totalFrames;
             end
 
-            % === Create a new figure for animation ===
             figAnim = figure('Name', 'Double Finger Link Animation', 'Color', 'w');
 
             for i = 1:length(indices)
+                % === Setup figure ===
                 figure(figAnim);
                 cla;
-
+                
+                % === Joint angles ===
                 theta1 = theta_array1(indices(i));
                 theta2 = theta_array2(indices(i));
                 theta3 = theta_array3(indices(i));
-
-                O0 = [0; 0];
-                O1 = O0 + obj.L0;
-                O2 = O1 + obj.R(theta1) * obj.L1;
-                O3 = O2 + obj.R(theta1 + theta2) * obj.L2;
-
-                scaleFactor = 0.15;
-                W1 = [0; -obj.m1 * obj.g] * scaleFactor;
-                W2 = [0; -obj.m2 * obj.g] * scaleFactor;
-                W3 = [0; -obj.m3 * obj.g] * scaleFactor;
-
-                % Rotated points (relative to O2)
-                COM_L1_1 = (obj.R(theta1) * obj.COM_L1) + O1;
-                COM_L2_2 = (obj.R(theta1 + theta2) * obj.COM_L2) + O2;
-                COM_L3_3 = (obj.R(theta3 + theta2 + theta1) * obj.COM_L3) + O3;
-                P_1      = (obj.R(theta1) * obj.P)      + O1;
-                P0_1     = (obj.R(theta1) * obj.P0)     + O1;
-                P1_2     = (obj.R(theta2 + theta1) * obj.P1)     + O2;
-                P2_2     = (obj.R(theta2 + theta1) * obj.P2)     + O2;
-                P3_3     = (obj.R(theta1 + theta3 + theta2) * obj.P3)     + O3;
-                PFin_3   = (obj.R(theta1 + theta3 + theta2) * obj.PFin)   + O3;
-
-                % Weights
-                % Arrow length scale (optional visual tuning)
-                scale = 1;
+            
+                % === Transformations ===
+                R_fixed = [0, 0, -1;
+                           0, 1, 0;
+                          1, 0, 0];
+            
+                R_1to2 = [specialTransformation.XX, specialTransformation.YX, specialTransformation.ZX;
+                          specialTransformation.XY, specialTransformation.YY, specialTransformation.ZY;
+                          specialTransformation.XZ, specialTransformation.YZ, specialTransformation.ZZ];
                 
-                % Define arrow tail and tip positions
-                tail1 = COM_L1_1;
-                tip1  = COM_L1_1 + W1 * scale;
+                t_1to2 = [specialTransformation.Trans_x;
+                          specialTransformation.Trans_y;
+                          specialTransformation.Trans_z];
+            
+                % ---- Orientation chain ----------------------------------------------
+                R_0to1_base   = R_fixed;           % proximal at zero angle
+                R_0to1        = R_0to1_base * obj.R(theta1);
                 
-                tail2 = COM_L2_2;
-                tip2  = COM_L2_2 + W2 * scale;
+                R_0to2_base   = R_0to1 * R_1to2;   % middle at zero θ₂
+                R_0to2        = R_0to2_base * obj.R(theta2);
                 
-                tail3 = COM_L3_3;
-                tip3  = COM_L3_3 + W3 * scale;
+                R_0to3        = R_0to2 * obj.R(theta3);  % distal after θ₃
+            
+                % === Joint Origins ===
+                O0 = [0; 0; 0];
+                O1 = O0;
+                O2 = O1 + R_0to1 * t_1to2;
+                O3 = O2 + R_0to2 * obj.L2;
+            
+                % === Points in local frames → global space ===
+                P0 = O1 + R_0to1 * obj.P0;
+                P1 = O2 + R_0to2 * obj.P1;
+                P2 = O2 + R_0to2 * obj.P2;
+                P3 = O3 + R_0to3 * obj.P3;
+                PFin = O3 + R_0to3 * obj.PFin;
+
+                COM_L1_global = O1 + R_0to1 * obj.COM_L1;
+                COM_L2_global = O2 + R_0to2 * obj.COM_L2;
+                COM_L3_global = O3 + R_0to3 * obj.COM_L3;
 
                 hold on;
                 axis equal;
@@ -676,58 +719,90 @@ classdef FingerSimulator
                 ylabel('Y [m]');
                 title(sprintf('Finger Link Geometry (Frame %d/%d)', i, length(indices)));
 
-                % Plot links and markers
-                plot([O0(1), O1(1)], [O0(2), O1(2)], 'k-', 'LineWidth', 2);
-                plot([O1(1), O2(1)], [O1(2), O2(2)], 'k-', 'LineWidth', 2);
-                plot([O2(1), O3(1)], [O2(2), O3(2)], 'b-', 'LineWidth', 2);
-                plot([O3(1), PFin_3(1)], [O3(2), PFin_3(2)], 'b-', 'LineWidth', 2);
-                plot(O0(1), O0(2), 'ko', 'MarkerFaceColor', 'k');
-                plot(O1(1), O1(2), 'ko', 'MarkerFaceColor', 'k');
-                plot(O2(1), O2(2), 'ko', 'MarkerFaceColor', 'k');
-                plot(O3(1), O3(2), 'ko', 'MarkerFaceColor', 'k');
-                plot(COM_L1_1(1), COM_L1_1(2), 'ro', 'MarkerFaceColor', 'r');
-                plot(COM_L2_2(1), COM_L2_2(2), 'ro', 'MarkerFaceColor', 'r');
-                plot(COM_L3_3(1), COM_L3_3(2), 'ro', 'MarkerFaceColor', 'r');
-                plot(obj.AP(1), obj.AP(2), 'go', 'MarkerFaceColor', 'g');
-                plot(P_1(1), P_1(2), 'go', 'MarkerFaceColor', 'g');
-                plot(P0_1(1), P0_1(2), 'go', 'MarkerFaceColor', 'g');
-                plot(P2_2(1), P2_2(2), 'go', 'MarkerFaceColor', 'g');
-                plot(P1_2(1), P1_2(2), 'go','MarkerFaceColor', 'g');
-                plot(P3_3(1), P3_3(2), 'go', 'MarkerFaceColor', 'g');
+                % === Project to YZ plane ===
+                % --- helper: project a 3-D vector onto the plotting plane
+                projYZ = @(v) [ v(3)  ;   ...  %  X-coord  ←  Z-component
+                                v(2) ];       %  Y-coord  ←  Y-component
 
-                % Labels
-                text(O0(1), O0(2), ' O0', 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'right');
-                text(O1(1), O1(2), ' O1', 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'right');
-                text(O2(1), O2(2), ' O2', 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'right');
-                text(O3(1), O3(2), ' O3', 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'right');
-                text(COM_L1_1(1), COM_L1_1(2), ' COM\_L1', 'VerticalAlignment', 'top');
-                text(COM_L2_2(1), COM_L2_2(2), ' COM\_L2', 'VerticalAlignment', 'top');
-                text(COM_L3_3(1), COM_L3_3(2), ' COM\_L3', 'VerticalAlignment', 'top');
-                text(obj.AP(1), obj.AP(2), ' AP', 'VerticalAlignment', 'top');
-                text(P_1(1), P_1(2), ' P\_1', 'VerticalAlignment', 'top');
-                text(P0_1(1), P0_1(2), ' P0\_1', 'VerticalAlignment', 'top');
-                text(P2_2(1), P2_2(2), ' P2\_2', 'VerticalAlignment', 'top');
-                text(P1_2(1), P1_2(2), ' P1\_2', 'VerticalAlignment', 'top');
-                text(P3_3(1), P3_3(2), ' P3\_3', 'VerticalAlignment', 'top');
+                P = [ projYZ(P0) projYZ(P1) projYZ(P2) projYZ(P3) projYZ(PFin)];
+                O = [ projYZ(O0) projYZ(O1) projYZ(O2) projYZ(O3) ];
+                C = [ projYZ(COM_L1_global) , projYZ(COM_L2_global) , projYZ(COM_L3_global) ];
+
+                plot(O(1,:), O(2,:), 'rs', 'MarkerFaceColor','r');
+                % Plot links between origins (e.g., kinematic chain)
+                plot(O(1,[1 2]), O(2,[1 2]), 'b-', 'LineWidth', 1.5);  % O0 to O1
+                plot(O(1,[2 3]), O(2,[2 3]), 'b-', 'LineWidth', 1.5);  % O1 to O2
+                plot(O(1,[3 4]), O(2,[3 4]), 'b-', 'LineWidth', 1.5);  % O2 to O3
+                PFin_YZ = [PFin(3); PFin(2)];   % X ← Z, Y ← Y
+                plot([O(1,4), PFin_YZ(1)], [O(2,4), PFin_YZ(2)], 'b-', 'LineWidth', 2);
+
+                % joints (black)
+                plot(P(1,:),P(2,:),'ko','MarkerFaceColor','k');
+                
+                plot(C(1,:), C(2,:), 'gd', 'MarkerFaceColor','g', 'MarkerSize',6);
+
+                scaleFactor = 0.15;
+                W1 = [0; -obj.m1 * obj.g; 0] * scaleFactor;
+                W2 = [0; -obj.m2 * obj.g; 0] * scaleFactor;
+                W3 = [0; -obj.m3 * obj.g; 0] * scaleFactor;
+
+                % Weights
+                % Arrow length scale (optional visual tuning)
+                scale = 0.25;
+                
+                % Define arrow tail and tip positions
+                tail1 = COM_L1_global;
+                tip1  = COM_L1_global + W1 * scale;
+                
+                tail2 = COM_L2_global;
+                tip2  = COM_L2_global + W2 * scale;
+                
+                tail3 = COM_L3_global;
+                tip3  = COM_L3_global + W3 * scale;
+
+                labelPoint = @(pos, name, offset) ...
+                    text(pos(1)+offset(1), pos(2)+offset(2), name, ...
+                         'FontSize', 8, 'FontWeight','bold', 'Color','k'); 
+            
+                % Offset to avoid text-overlapping
+                offset = [0.001; 0.001];  % adjust if needed
+                
+                % Label Origins
+                labelPoint(O(:,1), 'O0', offset);
+                labelPoint(O(:,2), 'O1', offset);
+                labelPoint(O(:,3), 'O2', offset);
+                labelPoint(O(:,4), 'O3', offset);
+                
+                % Label Link Points
+                labelPoint(P(:,1), 'P0', offset);
+                labelPoint(P(:,2), 'P1', offset);
+                labelPoint(P(:,3), 'P2', offset);
+                labelPoint(P(:,4), 'P3', offset);
+                labelPoint(P(:,5), 'PFin', offset);
+                
+                % Label COMs
+                labelPoint(C(:,1), 'COM1', offset);
+                labelPoint(C(:,2), 'COM2', offset);
+                labelPoint(C(:,3), 'COM3', offset);
 
                 % Plot arrows as lines
-                plot([tail1(1), tip1(1)], [tail1(2), tip1(2)], 'm-', 'LineWidth', 1.5);
-                plot([tail2(1), tip2(1)], [tail2(2), tip2(2)], 'm-', 'LineWidth', 1.5);
-                plot([tail3(1), tip3(1)], [tail3(2), tip3(2)], 'm-', 'LineWidth', 1.5);
+                plot([tail1(3), tip1(3)], [tail1(2), tip1(2)], 'm-', 'LineWidth', 1.5);
+                plot([tail2(3), tip2(3)], [tail2(2), tip2(2)], 'm-', 'LineWidth', 1.5);
+                plot([tail3(3), tip3(3)], [tail3(2), tip3(2)], 'm-', 'LineWidth', 1.5);
 
-                drawArrowhead(obj, tip1, W1, 'm');
-                drawArrowhead(obj, tip2, W2, 'm');
-                drawArrowhead(obj, tip3, W3, 'm');
+                drawArrowhead(obj, [tip1(3);tip1(2)], W1, 'm');
+                drawArrowhead(obj, [tip2(3);tip2(2)], W2, 'm');
+                drawArrowhead(obj, [tip3(3);tip3(2)], W3, 'm');
 
-                axis([ -0.01 0.17 -0.01 0.1 ]);
-
+                axis auto;
                 drawnow;
-                pause(1 / desiredFPS);  % Smooth animation
+                pause(1/desiredFPS);
             end
 
         end
 
         function drawArrowhead(obj, tip, direction, color)
+            direction = direction(1:2);  % Truncate to 2D
             dir = direction / norm(direction);  % Normalize
             perp = [-dir(2); dir(1)];           % Perpendicular in 2D
         
@@ -741,10 +816,11 @@ classdef FingerSimulator
             fill([tip(1), left(1), right(1)], ...
                  [tip(2), left(2), right(2)], color, 'EdgeColor', color);
         end
-
+    
         function obj = setBufferManagerLibraryPath(obj, assemblyPath)
             try
                 NET.addAssembly(assemblyPath);
+
                 obj.bufferManager = BufferPrint.BufferManager();
                 obj.bufferManager.CreateOrOpenSharedMemory();
 
@@ -761,6 +837,66 @@ classdef FingerSimulator
                 obj.digitalTwinVisual = true;
 
                 obj.dataAccumulator = obj.bufferManager.GetSubassemblyAccumulator();
+
+                obj.originTransformation = obj.bufferManager.GetOriginTransformation();
+
+                %
+                % UCSs = obj.dataAccumulator.GetUCSs("proximalThumb");
+
+                % O1_Mat = [];
+                % for i = 1:length(UCSs)
+                %     ucsData = UCSs.Item(i - 1);  % .NET indexing starts from 0
+                % 
+                %     fprintf('UCS Name: %s\n', ucsData.Name);
+                %     % disp(ucsData.UCSMat);  % Uncomment to print matrix
+                % 
+                %     if strcmp(char(ucsData.Name), 'UCS2')        % using char()
+                %         tmpMat = ucsData.UCSMat;
+                % 
+                %         methods(tmpMat)
+                %         properties(tmpMat)
+                % 
+                %         T = zeros(4, 4);
+                % 
+                %         for k = 1:3      % Rows
+                %             for j = 1:4  % Columns
+                %                 T(k, j) = tmpMat.Cell(k, j);  % 1-based indexing
+                %             end
+                %         end
+                %         T(4, :) = [0, 0, 0, 1];
+                % 
+                %         O1_Mat = T;
+                %         break;
+                %     end
+                % end
+                % 
+                % if isempty(O1_Mat)
+                %     error("UCS1 not found in the UCS list.");
+                % end
+                % 
+                % origin1 = zeros(4,4);   % Origin of UCS1 in global coordinates
+                % origin1(1,1) = obj.originTransformation.XX;
+                % origin1(1,2) = obj.originTransformation.XY;
+                % origin1(1,3) = obj.originTransformation.XZ;
+                % origin1(1,4) = obj.originTransformation.Trans_x;
+                % origin1(2,1) = obj.originTransformation.YX;
+                % origin1(2,2) = obj.originTransformation.YY;
+                % origin1(2,3) = obj.originTransformation.YZ;
+                % origin1(2,4) = obj.originTransformation.Trans_y;
+                % origin1(3,1) = obj.originTransformation.ZX;
+                % origin1(3,2) = obj.originTransformation.ZY;
+                % origin1(3,3) = obj.originTransformation.ZZ;
+                % origin1(3,4) = obj.originTransformation.Trans_z;
+                % origin1(4,1) = 0;
+                % origin1(4,2) = 0;
+                % origin1(4,3) = 0;
+                % origin1(4,4) = 1;
+                % 
+                % origin2 = O1_Mat(1:3, 4);  % Origin of UCS2 in global coordinates
+                % 
+                % obj.L1 = origin2 - origin1(1:3, 4);  % Vector from UCS1 to UCS2
+                %
+
                 disp('[INFO] BufferManager DLL loaded and shared memory initialized.');
             catch ME
                 warning(ME.identifier ,'[ERROR] Failed to load BufferManager or initialize shared memory: %s', ME.message);

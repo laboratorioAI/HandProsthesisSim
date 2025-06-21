@@ -22,8 +22,9 @@ namespace BufferManager
 
         public static float Correct_RInDsJ(float value)
         {
+            double delta = value * 70.0 / 90.0;
             // Correct the value for the right index proximal joint
-            return 200.0f + value; // Example correction
+            return (float)(200.0f + delta); // Example correction
         }
 
         public static float Correct_RMdPxJ(float value)
@@ -80,28 +81,25 @@ namespace BufferManager
             return value - 160.0f; // Example correction
         }
 
-        public static float Correct_RThB__(float value)
-        {
-            // Correct the value for the right index proximal joint
-            return value + 0.5f; // Example correction
-        }
-
         public static float Correct_RThPxJ(float value)
         {
             // Correct the value for the right index proximal joint
-            return 210.0f - value; // Example correction
+
+            return 0.0f + value; // Example correction
         }
 
         public static float Correct_RThMdJ(float value)
         {
+            double delta = value * 75.0 / 90.0;
             // Correct the value for the right index proximal joint
-            return value + 0.5f; // Example correction
+            return (float)(120.0f + delta); // Example correction
         }
 
         public static float Correct_RThDsJ(float value)
         {
+            double delta = value * 70.0 / 90.0;
             // Correct the value for the right index proximal joint
-            return value + 0.5f; // Example correction
+            return (float)(120.0f + delta); // Example correction
         }
 
     }

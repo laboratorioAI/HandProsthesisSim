@@ -63,7 +63,7 @@ namespace ProthesisSimulation
             IEnumerable<string> labelsData = myData.Labels;
             foreach (string label in labelsData)
             {
-                Console.WriteLine("Mass center accumulator data:");
+                Console.WriteLine($"Mass center accumulator data - {label}:");
                 Console.WriteLine($"Total Mass: {myData.GetTotalMass(label)}");
                 Point COM = myData.GetCenterOfMass(label, bufferManager.GetInventorAppInstance());
                 Console.WriteLine($"Total Center of Mass: x:{COM.X}, y:{COM.Y}, z:{COM.Z}");

@@ -7,9 +7,14 @@ classdef FingerController
     end
 
     methods
-        function obj = FingerController(fingerName, configPath)
+        function obj = FingerController(fingerName, configPath, isThumb)
             obj.FingerName = fingerName;
-            obj.Simulator = FingerSimulator(configPath);
+            if(isThumb)
+                obj.Simulator = ThumbSimulator(configPath);
+            else
+                obj.Simulator = FingerSimulator(configPath);
+            end
+            
             obj.JointIds = obj.assignJointIds(fingerName);
             obj.PhalanxIds = obj.assignPhalanxIds(fingerName);
 
@@ -28,7 +33,7 @@ classdef FingerController
                 case "RPk"
                     jointIds = {"RPkPxJ", "RPkMdJ", "RPkDsJ"};
                 case "RTh"
-                    jointIds = {"RThB__", "RThPxJ", "RThMdJ", "RThDsJ"};  % if thumb has only 3 joints
+                    jointIds = {"RThPxJ", "RThMdJ", "RThDsJ"};
                 case "LIn"
                     jointIds = {"LInPxJ", "LInMdJ", "LInDsJ"};
                 case "LMd"
@@ -38,7 +43,7 @@ classdef FingerController
                 case "LPk"
                     jointIds = {"LPkPxJ", "LPkMdJ", "LPkDsJ"};
                 case "LTh"
-                    jointIds = {"LThB__", "LThPxJ", "LThMdJ", "LThDsJ"};
+                    jointIds = {"LThPxJ", "LThMdJ", "LThDsJ"};
                 otherwise
                     error("Unknown finger name: %s", fingerName);
             end
@@ -55,7 +60,7 @@ classdef FingerController
                 case "RPk"
                     phanlanxIds = {"proximalPicky", "middlePicky", "distalPicky"};
                 case "RTh"
-                    phanlanxIds = {"RThB__", "RThPxJ", "RThMdJ", "RThDsJ"};  % if thumb has only 3 joints
+                    phanlanxIds = {"proximalThumb", "middleThumb", "distalThumb"};
                 case "LIn"
                     phanlanxIds = {"LInPxJ", "LInMdJ", "LInDsJ"};
                 case "LMd"
@@ -65,7 +70,7 @@ classdef FingerController
                 case "LPk"
                     phanlanxIds = {"LPkPxJ", "LPkMdJ", "LPkDsJ"};
                 case "LTh"
-                    phanlanxIds = {"LThB__", "LThPxJ", "LThMdJ", "LThDsJ"};
+                    phanlanxIds = {"LThPxJ", "LThMdJ", "LThDsJ"};
                 otherwise
                     error("Unknown phanlanx name: %s", fingerName);
             end
@@ -88,7 +93,6 @@ classdef FingerController
                 obj.Simulator.drawStepDigitalTwin("writte",obj.JointIds{1},thetaPoximal);
                 obj.Simulator.drawStepDigitalTwin("writte",obj.JointIds{2},thetaMiddle);
                 obj.Simulator.drawStepDigitalTwin("writte",obj.JointIds{3},thetaDistal);
-                obj.Simulator.drawStepDigitalTwin("writte",obj.JointIds{4},thetaThumb);
             else
                 obj.Simulator.drawStepDigitalTwin("writte",obj.JointIds{1},thetaPoximal);
                 obj.Simulator.drawStepDigitalTwin("writte",obj.JointIds{2},thetaMiddle);
