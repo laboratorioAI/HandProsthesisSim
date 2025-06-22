@@ -87,6 +87,11 @@ classdef FingerSimulator
         Y1 double
         Y2 double
         Y3 double
+
+        %
+        err3
+        err2
+        err1
     
         % === Simulation results ===
         results struct = struct()       % Container for simulation outputs (Y1, Y2, Y3, alpha, etc.)
@@ -237,6 +242,10 @@ classdef FingerSimulator
             obj.alpha2(:, 1) = obj.alpha2_init;
             obj.alpha3(:, 1) = obj.alpha3_init;
 
+            obj.err3 = zeros(1,obj.N-1);   % distal (θ3, ω3)
+            obj.err2 = zeros(1,obj.N-1);   % middle
+            obj.err1 = zeros(1,obj.N-1);   % proximal
+
             % === Inertia Calculation ===
         
             f1 = @(t, th_3, th_2, y, I) [ ...
@@ -276,9 +285,34 @@ classdef FingerSimulator
                 k2 = f3(t+obj.dt/2    , y3+obj.dt/2*k1  , y2(1), y1(1), distInertia);
                 k3 = f3(t+obj.dt/2    , y3+obj.dt/2*k2  , y2(1), y1(1), distInertia);
                 k4 = f3(t+obj.dt      , y3+obj.dt  *k3  , y2(1), y1(1), distInertia);
+
+                y3_big = y3 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
+
+                % ------------------------------------------------------------
+                % (B) TWO successive half-steps  (h = dt/2)  for error estimate
+                % ------------------------------------------------------------
+                h = obj.dt/2;
             
-                y3Next = y3 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
+                % ----- first half step -----------------------------
+                k1a = f3(t      , y3              , y2(1), y1(1), distInertia);
+                k2a = f3(t+h/2  , y3+h/2*k1a      , y2(1), y1(1), distInertia);
+                k3a = f3(t+h/2  , y3+h/2*k2a      , y2(1), y1(1), distInertia);
+                k4a = f3(t+h    , y3+h   *k3a     , y2(1), y1(1), distInertia);
+                y3_half = y3 + h/6*(k1a + 2*k2a + 2*k3a + k4a);
             
+                % ----- second half step ----------------------------
+                k1b = f3(t+h    , y3_half         , y2(1), y1(1), distInertia);
+                k2b = f3(t+3*h/2, y3_half+h/2*k1b , y2(1), y1(1), distInertia);
+                k3b = f3(t+3*h/2, y3_half+h/2*k2b , y2(1), y1(1), distInertia);
+                k4b = f3(t+2*h  , y3_half+h  *k3b , y2(1), y1(1), distInertia);
+                y3_two = y3_half + h/6*(k1b + 2*k2b + 2*k3b + k4b);   % y via 2×(dt/2)
+            
+                % ----- England p.168 local error for *first* dt step --------------
+                obj.err3(k-1) = norm(y3_two - y3_big, 2) / 30;
+            
+                % Replace y3Next with the more accurate two-half-step value ---------
+                y3Next = y3_two;
+
                 % ---------- HARD‑STOP LOGIC ---------------------------------
                 [tau_now, T3_2] = tau3(y3Next(1), y2(1), 0, obj.time(k));                % torque at this step
             
@@ -308,7 +342,30 @@ classdef FingerSimulator
                 k3 = f2(t+obj.dt/2    , y3Next(1) , y2+obj.dt/2*k2  , y1(1), middInertia);
                 k4 = f2(t+obj.dt      , y3Next(1) , y2+obj.dt  *k3  , y1(1), middInertia);
             
-                y2Next = y2 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
+                y2_big = y2 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
+
+                % --- two half-steps (h = dt/2) --------------------------------
+                h = obj.dt/2;
+                
+                % half-step 1
+                k1a = f2(t      , y3Next(1) , y2              , y1(1), middInertia);
+                k2a = f2(t+h/2  , y3Next(1) , y2+h/2*k1a      , y1(1), middInertia);
+                k3a = f2(t+h/2  , y3Next(1) , y2+h/2*k2a      , y1(1), middInertia);
+                k4a = f2(t+h    , y3Next(1) , y2+h   *k3a     , y1(1), middInertia);
+                y2_half = y2 + h/6*(k1a + 2*k2a + 2*k3a + k4a);
+                
+                % half-step 2
+                k1b = f2(t+h    , y3Next(1) , y2_half         , y1(1), middInertia);
+                k2b = f2(t+3*h/2, y3Next(1) , y2_half+h/2*k1b , y1(1), middInertia);
+                k3b = f2(t+3*h/2, y3Next(1) , y2_half+h/2*k2b , y1(1), middInertia);
+                k4b = f2(t+2*h  , y3Next(1) , y2_half+h  *k3b , y1(1), middInertia);
+                y2_two = y2_half + h/6*(k1b + 2*k2b + 2*k3b + k4b);
+                
+                % --- England p.168 error (first dt step) ----------------------
+                obj.err2(k-1) = norm(y2_two - y2_big, 2) / 30;
+                
+                % --- use the more accurate value ------------------------------
+                y2Next = y2_two;
             
                 % ---------- HARD‑STOP LOGIC ---------------------------------
                 [tau_now, T2_1] = tau2(y3Next(1), y2Next(1), 0, obj.time(k));
@@ -339,7 +396,32 @@ classdef FingerSimulator
                 k3 = f1(t+obj.dt/2    , y3Next(1), y2Next(1), y1+obj.dt/2*k2 , proxInertia);
                 k4 = f1(t+obj.dt      , y3Next(1), y2Next(1), y1+obj.dt  *k3 , proxInertia);
             
-                y1Next = y1 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
+                y1_big = y1 + obj.dt/6*(k1 + 2*k2 + 2*k3 + k4);
+
+                % --- two half-steps (h = dt/2) --------------------------------
+                h = obj.dt/2;
+                
+                % half-step 1
+                k1a = f1(t        , y3Next(1), y2Next(1), y1         , proxInertia);
+                k2a = f1(t+h/2    , y3Next(1), y2Next(1), y1+h/2*k1a , proxInertia);
+                k3a = f1(t+h/2    , y3Next(1), y2Next(1), y1+h/2*k2a , proxInertia);
+                k4a = f1(t+h      , y3Next(1), y2Next(1), y1+h  *k3a , proxInertia);
+
+                y1_half = y1 + h/6*(k1a + 2*k2a + 2*k3a + k4a); 
+                
+                % half-step 2
+                k1b = f1(t        , y3Next(1), y2Next(1), y1_half         , proxInertia);
+                k2b = f1(t+h/2    , y3Next(1), y2Next(1), y1_half+h/2*k1a , proxInertia);
+                k3b = f1(t+h/2    , y3Next(1), y2Next(1), y1_half+h/2*k2a , proxInertia);
+                k4b = f1(t+h      , y3Next(1), y2Next(1), y1_half+h  *k3a , proxInertia);
+
+                y1_two = y1_half + h/6*(k1b + 2*k2b + 2*k3b + k4b);
+                
+                % --- England p.168 error (first dt step) ----------------------
+                obj.err1(k-1) = norm(y1_two - y1_big, 2) / 30;
+                
+                % --- use the more accurate value ------------------------------
+                y1Next = y1_two;
             
                 % ---------- HARD‑STOP LOGIC ---------------------------------
                 [tau_now, T1_0] = tau1(y3Next(1), y2Next(1), y1Next(1), obj.time(k));
