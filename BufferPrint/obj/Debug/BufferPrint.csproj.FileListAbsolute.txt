@@ -1,0 +1,17 @@
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\BufferPrint\bin\Debug\BufferPrint.exe.config
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\BufferPrint\bin\Debug\BufferPrint.exe
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\BufferPrint\bin\Debug\BufferPrint.pdb
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\BufferPrint\obj\Debug\BufferPrint.csproj.AssemblyReference.cache
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\BufferPrint\obj\Debug\BufferPrint.csproj.CoreCompileInputs.cache
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\BufferPrint\obj\Debug\BufferPrint.exe
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\BufferPrint\obj\Debug\BufferPrint.pdb
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\bin\Debug\BufferPrint.exe.config
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\bin\Debug\BufferPrint.exe
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\bin\Debug\BufferPrint.pdb
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\bin\Debug\BufferManager.dll
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\bin\Debug\BufferManager.pdb
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\obj\Debug\BufferPrint.csproj.AssemblyReference.cache
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\obj\Debug\BufferPrint.csproj.CoreCompileInputs.cache
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\obj\Debug\BufferPr.20AF65B9.Up2Date
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\obj\Debug\BufferPrint.exe
+D:\Repositorios_Politecnica\TesisProj\BufferPrint\obj\Debug\BufferPrint.pdb

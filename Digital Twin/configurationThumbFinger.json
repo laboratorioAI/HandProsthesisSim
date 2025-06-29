@@ -1,0 +1,49 @@
+{
+  "time": {
+    "t0": 0,
+    "tf": 20,
+    "dt": 0.001
+  },
+  "Tmag": {
+    "expression": "160 * sin(pi * 0.05 * t)"
+  },
+"thetaInit": {
+    "theta1_init": 0,
+    "theta2_init": 0,
+    "theta3_init": 0
+  },
+  "omegaInit": {
+    "omega1_init": 0,
+    "omega2_init": 0,
+    "omega3_init": 0
+  },
+  "alphaInit": {
+    "alpha1_init": 0,
+    "alpha2_init": 0,
+    "alpha3_init": 0
+  },
+  "thetaLimits": {
+    "thetaMin_deg": 0,
+    "thetaMax_deg": 85
+  },
+  "simulation": {
+    "desiredFPS": 30,
+    "g": 9.81
+  },
+  "rotationMatrix": "R(phi) = [[cos(phi), -sin(phi), 0], [sin(phi), cos(phi), 0], [0, 0, 1]]",
+  "points": {
+    "P0": [0.007, 0.003, -0.03],
+    "P1": [0.007, 0.01, 0],
+    "P2": [0.022, 0.004, 0],
+    "P3": [0.005, 0.009, 0],
+    "PFin": [0.026, 0.004, 0]
+  },
+  "lengths_m": {
+    "L0": [0.0, 0.0, 0.0],
+    "L1": [0.029, 0.031, -0.026],
+    "L2": [0.031, -0.002, 0],
+    "L3": [0.026, 0, 0]
+  },
+  "radioPuley": 0.002,
+  "radioProximalThumb": 0.002
+}
