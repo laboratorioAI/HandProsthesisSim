@@ -279,6 +279,10 @@ classdef FingerSimulator
                 % === Finger Phalanx Data Gathering ===
                 % proximalInertia, middleInertia, distalInertia = GetPhalanxInfo(phanlanxIds);
                 [proxInertia, middInertia, distInertia] = obj.GetPhalanxsInertias(phanlanxIds, y1(1), y2(1), y3(1));
+
+                obj.I3z = distInertia;
+                obj.I2z = middInertia;
+                obj.I1z = proxInertia;
             
                 % CALCULATIONS THIRD PHALANX
                 k1 = f3(t             , y3              , y2(1), y1(1), distInertia);
@@ -314,7 +318,7 @@ classdef FingerSimulator
                 y3Next = y3_two;
 
                 % ---------- HARD‑STOP LOGIC ---------------------------------
-                [tau_now, T3_2] = tau3(y3Next(1), y2(1), 0, obj.time(k));                % torque at this step
+                [tau_now, T3_2] = tau3(y3Next(1), y2(1), y1(1), obj.time(k));                % torque at this step
             
                 if y3Next(1) < obj.thetaMin
                     y3Next(1) = obj.thetaMin;
@@ -368,7 +372,7 @@ classdef FingerSimulator
                 y2Next = y2_two;
             
                 % ---------- HARD‑STOP LOGIC ---------------------------------
-                [tau_now, T2_1] = tau2(y3Next(1), y2Next(1), 0, obj.time(k));
+                [tau_now, T2_1] = tau2(y3Next(1), y2Next(1), y1(1), obj.time(k));
             
                 if y2Next(1) < obj.thetaMin
                     y2Next(1) = obj.thetaMin;
@@ -439,7 +443,7 @@ classdef FingerSimulator
                     y1Next(2) = 0;
                     obj.alpha1(k) = 0;
                 else
-                    obj.alpha1(k) = tau_now/obj.I2z;
+                    obj.alpha1(k) = tau_now/obj.I1z;
                 end
             
                 obj.Y1(:,k) = y1Next;
@@ -454,22 +458,22 @@ classdef FingerSimulator
             obj.theta2 = obj.Y2(1,:);
             obj.theta3 = obj.Y3(1,:);
     
-            obj.omega1 = obj.Y2(2,:);
-            obj.omega2 = obj.Y3(2,:);
-            obj.omega3 = obj.Y1(2,:);
+            obj.omega1 = obj.Y1(2,:);
+            obj.omega2 = obj.Y2(2,:);
+            obj.omega3 = obj.Y3(2,:);
 
             obj.results.Y1 = obj.Y1;
             obj.results.Y2 = obj.Y2;
             obj.results.Y3 = obj.Y3;
-            obj.results.alpha1 = obj.alpha1;
-            obj.results.alpha2 = obj.alpha2;
-            obj.results.alpha3 = obj.alpha3;
+            obj.results.alpha1 = obj.alpha1(1,:);
+            obj.results.alpha2 = obj.alpha2(1,:);
+            obj.results.alpha3 = obj.alpha3(1,:);
             obj.results.theta1 = obj.theta1(1,:);
             obj.results.theta2 = obj.theta2(1,:);
             obj.results.theta3 = obj.theta3(1,:);
-            obj.results.omega1 = obj.theta1(1,:);
-            obj.results.omega2 = obj.theta2(1,:);
-            obj.results.omega3 = obj.theta3(1,:);
+            obj.results.omega1 = obj.omega1(1,:);
+            obj.results.omega2 = obj.omega2(1,:);
+            obj.results.omega3 = obj.omega3(1,:);
             obj.results.tau1_v = arrayfun(@(th3, th2, th1, t) tau1(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
             obj.results.tau2_v = arrayfun(@(th3, th2, th1, t) tau2(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
             obj.results.tau3_v = arrayfun(@(th3, th2, th1, t) tau3(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
@@ -603,70 +607,65 @@ classdef FingerSimulator
             end
         end
 
-        function plotResults(obj)
-            tau1 = @(th3, th2, th1, t) torqueLink1_vFinal(th2, th1, obj.Tmag(t), obj.COM_L1, obj.AP, obj.P, obj.P0, obj.P1, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m1, obj.R);
-            tau2 = @(th3, th2, th1, t) torqueLink2_vFinal(th3, th2, th1, obj.Tmag(t), obj.COM_L2, obj.P0, obj.P1, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m2, obj.R);
-            tau3 = @(th3, th2, th1, t) torqueLink3_vFinal(th3, th2, th1, obj.Tmag(t), obj.COM_L3, obj.P2, obj.P3, obj.L0, obj.L1, obj.L2, obj.g, obj.m3, obj.R);
-            
-            tau3_v = arrayfun(@(th3, th2, th1, t) tau3(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
-            
-            % plots
-            figure('Name','Third Phalanx Dynamics','Color','w');
-            subplot(4,1,1), plot(obj.time, tau3_v,'LineWidth',1.2),  grid on
-            ylabel('\tau_{3z}  [N·m]'),   title('Applied Torque')
-            
-            subplot(4,1,2), plot(obj.time, rad2deg(obj.theta3),'LineWidth',1.2), grid on
-            ylabel('\theta_{3z}  [deg]'),  title('Angular Position')
-            
-            subplot(4,1,3), plot(obj.time, rad2deg(obj.omega3),'LineWidth',1.2), grid on
-            ylabel('\omega_{3z}  [deg/s]'), title('Angular Velocity')
-            
-            subplot(4,1,4), plot(obj.time, rad2deg(obj.alpha3),'LineWidth',1.2), grid on
-            ylabel('\alpha_{3z}  [deg/s^2]'), xlabel('Time  [s]')
+        function plotFingerResults(obj, time, Index)
+            % === Plot results for third phalanx ===
+            figure('Name','Third Phalanx Dynamics','Color','w');
+            subplot(4,1,1), plot(time, Index.tau3,'LineWidth',1.2), grid on
+            ylabel('\tau_{3z} [N·m]'), title('Applied Torque')
+            yticks(-1:0.25:1.5)
+        
+            subplot(4,1,2), plot(time, rad2deg(Index.th3),'LineWidth',1.2), grid on
+            ylabel('\theta_{3z} [deg]'), title('Angular Position')
+            yticks(0:10:120)
+        
+            subplot(4,1,3), plot(time, Index.o3,'LineWidth',1.2), grid on
+            ylabel('\omega_{3z} [deg/s]'), title('Angular Velocity')
+            yticks(-3:0.5:3)
+        
+            subplot(4,1,4), plot(time, Index.a3,'LineWidth',1.2), grid on
+            ylabel('\alpha_{3z} [deg/s^2]'), xlabel('Time [s]')
             title('Angular Acceleration (net)')
-            
-            %plotSimpleFinger(theta3, tf, COM_L2, COM_L3, P2, P3, L2, PFin, R, desiredFPS);
-            
-            
-            tau2_v = arrayfun(@(th3, th2, th1 ,t) tau2(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
-            
-            % plots
-            figure('Name','Second Phalanx Dynamics','Color','w');
-            subplot(4,1,1), plot(obj.time, tau2_v,'LineWidth',1.2),  grid on
-            ylabel('\tau_{2z}  [N·m]'),   title('Applied Torque')
-            
-            subplot(4,1,2), plot(obj.time, rad2deg(obj.theta2),'LineWidth',1.2), grid on
-            ylabel('\theta_{2z}  [deg]'),  title('Angular Position')
-            
-            subplot(4,1,3), plot(obj.time, rad2deg(obj.omega2),'LineWidth',1.2), grid on
-            ylabel('\omega_{2z}  [deg/s]'), title('Angular Velocity')
-            
-            subplot(4,1,4), plot(obj.time, rad2deg(obj.alpha2),'LineWidth',1.2), grid on
-            ylabel('\alpha_{2z}  [deg/s^2]'), xlabel('Time  [s]')
+            yticks(-4:0.75:6.5)
+        
+            % === Plot results for second phalanx ===
+            figure('Name','Second Phalanx Dynamics','Color','w');
+            subplot(4,1,1), plot(time, Index.tau2,'LineWidth',1.2), grid on
+            ylabel('\tau_{2z} [N·m]'), title('Applied Torque')
+            yticks(-1:0.25:3)
+        
+            subplot(4,1,2), plot(time, rad2deg(Index.th2),'LineWidth',1.2), grid on
+            ylabel('\theta_{2z} [deg]'), title('Angular Position')
+            yticks(0:10:120)
+        
+            subplot(4,1,3), plot(time, Index.o2,'LineWidth',1.2), grid on
+            ylabel('\omega_{2z} [deg/s]'), title('Angular Velocity')
+            yticks(-3:0.5:3.5)
+        
+            subplot(4,1,4), plot(time, Index.a2,'LineWidth',1.2), grid on
+            ylabel('\alpha_{2z} [deg/s^2]'), xlabel('Time [s]')
             title('Angular Acceleration (net)')
-            
-            %plotDoubleFinger(theta2, theta3, tf, COM_L1, COM_L2, COM_L3, L1, L2, L3, P0, P1, P2, P3, PFin, R, desiredFPS);
-            
-            
-            tau1_v = arrayfun(@(th3, th2, th1 ,t) tau1(th3, th2, th1, t), obj.theta3, obj.theta2, obj.theta1, obj.time);
-            
-            % plots
-            figure('Name','First Phalanx Dynamics','Color','w');
-            subplot(4,1,1), plot(obj.time, tau1_v,'LineWidth',1.2),  grid on
-            ylabel('\tau_{1z}  [N·m]'),   title('Applied Torque')
-            
-            subplot(4,1,2), plot(obj.time, rad2deg(obj.theta1),'LineWidth',1.2), grid on
-            ylabel('\theta_{1z}  [deg]'),  title('Angular Position')
-            
-            subplot(4,1,3), plot(obj.time, rad2deg(obj.omega2),'LineWidth',1.2), grid on
-            ylabel('\omega_{1z}  [deg/s]'), title('Angular Velocity')
-            
-            subplot(4,1,4), plot(obj.time, rad2deg(obj.alpha2),'LineWidth',1.2), grid on
-            ylabel('\alpha_{1z}  [deg/s^2]'), xlabel('Time  [s]')
+            yticks(-3:0.75:6.5)
+        
+            % === Plot results for first phalanx ===
+            figure('Name','First Phalanx Dynamics','Color','w');
+            subplot(4,1,1), plot(time, Index.tau1,'LineWidth',1.2), grid on
+            ylabel('\tau_{1z} [N·m]'), title('Applied Torque')
+            yticks(-0.5:0.25:3.25)
+        
+            subplot(4,1,2), plot(time, rad2deg(Index.th1),'LineWidth',1.2), grid on
+            ylabel('\theta_{1z} [deg]'), title('Angular Position')
+            yticks(0:10:120)
+        
+            subplot(4,1,3), plot(time, Index.o1,'LineWidth',1.2), grid on
+            ylabel('\omega_{1z} [deg/s]'), title('Angular Velocity')
+            yticks(-3.5:0.5:4)
+        
+            subplot(4,1,4), plot(time, Index.a1,'LineWidth',1.2), grid on
+            ylabel('\alpha_{1z} [deg/s^2]'), xlabel('Time [s]')
             title('Angular Acceleration (net)')
-            
-            plotTripleFinger(obj.theta1, obj.theta2, obj.theta3, obj.tf, obj.COM_L1, obj.COM_L2, obj.COM_L3, obj.L0, obj.L1, obj.L2, obj.L3, obj.AP, obj.P, obj.P0, obj.P1, obj.P2, obj.P3, obj.PFin, obj.R, obj.desiredFPS);
+            yticks(-1.5:0.5:3.5)
         end
+
 
         function config = loadConfigFile(obj, filename)
             % Load JSON file into a MATLAB struct

@@ -29,12 +29,12 @@ function [tau2, T2_1] = torqueLink2_vFinal(theta3, theta2, theta1, Tmag, COM_L2,
 
 
     % Compute tendon T2_1 (from O1 side pulling to O2)
-    dir_T2_1 = (P0 - P1);
+    dir_T2_1 = P0 - P1;
     T2_1 = Tmag * dir_T2_1 / norm(dir_T2_1);
     tauT2_1 = cross([P1 - O2; 0], [T2_1; 0]);  % Torque at O2
 
     % Compute tendon T2_3 (pulling from link 3 back to link 2)
-    dir_T2_3 = (P3 - P2);
+    dir_T2_3 = P3 - P2;
     T2_3 = Tmag * dir_T2_3 / norm(dir_T2_3);
     tauT2_3 = cross([P2 - O2; 0], [T2_3; 0]);  % Torque at O2
 

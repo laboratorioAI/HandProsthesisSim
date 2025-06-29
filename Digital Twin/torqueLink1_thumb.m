@@ -30,10 +30,12 @@ function [tau1, Tnot] = torqueLink1_thumb(theta1, COM_L1, m1, g, torqueMotor, ra
     Fg = [0; -m1 * g; 0];
     
     % === Center of Mass in global coordinates ===
-    COM_L1_global = R_0to1 * COM_L1;     % COM_L1 is local (proximal body)
+    COM_L1_global = O1 + R_0to1 * COM_L1;     % COM_L1 is local (proximal body)
     
+    r_COM_wrt_O0 = COM_L1_global - O0;   % vector from O0 to COM
+
     % === Gravitational torque at joint-1 ===
-    tau_gravity = cross(COM_L1_global, Fg);
+    tau_gravity = cross(r_COM_wrt_O0, Fg);
     
     % === Motor torque effect scaled by gear/pulley ratio ===
     tau1_motor = torqueMotor * radioProximalThumb / radioPuley;

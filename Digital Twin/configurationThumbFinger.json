@@ -24,7 +24,7 @@
   },
   "thetaLimits": {
     "thetaMin_deg": 0,
-    "thetaMax_deg": 89
+    "thetaMax_deg": 85
   },
   "simulation": {
     "desiredFPS": 30,
