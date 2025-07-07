@@ -178,6 +178,6 @@ This simulator was developed as part of a graduation thesis in Computer Science 
 
 ## 📝 License <a name="license"></a>
 
-This project is [MIT](./LICENSE.md) licensed.
+This project is [GNU](./LICENSE.md) licensed.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
