@@ -128,8 +128,8 @@ For a real-world prototype, you would need:
 
 👤 **Alexander**
 
-- GitHub: [GitHub](https://github.com/alexansaa)
-- LinkedIn: [LinkedIn](https://www.linkedin.com/in/alexander-saavedra-2803b1b6/)
+- GitHub: [https://github.com/alexansaa](https://github.com/alexansaa)
+- LinkedIn: [https://www.linkedin.com/in/alexander-saavedra-garcia/](https://www.linkedin.com/in/alexander-saavedra-garcia/)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
