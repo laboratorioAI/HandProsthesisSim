@@ -1318,8 +1318,5 @@ namespace BufferPrint
         {
             _OriginUCS = OriginUCS;
         }
-
-
-
     }
 }

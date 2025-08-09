@@ -13,16 +13,15 @@ tmag = @(t) 160 * sin(pi * 0.05 * t);
 
 % definir el loop de simulacion (revisar)
 t0 = 0;
-tf = 15;
-dt = 1;
+tf = 40;
+dt = 0.125;
 time  = t0:dt:tf;
 
 N = numel(time);
 
 tmag_reg = zeros(N);
 
-%indexFingertheta1
-
+% %indexFingertheta1
 Index = struct( ...
     'th1', zeros(1, N), ...
     'th2', zeros(1, N), ...
@@ -32,7 +31,10 @@ Index = struct( ...
     'o3',  zeros(1, N), ...
     'a1',  zeros(1, N), ...
     'a2',  zeros(1, N), ...
-    'a3',  zeros(1, N) ...
+    'a3',  zeros(1, N), ...
+    'tau1',zeros(1, N), ...
+    'tau2',zeros(1, N), ...
+    'tau3',zeros(1, N) ...
 );
 
 Index.th1(1) = indexFinger.Simulator.theta1_init;
@@ -46,6 +48,10 @@ Index.o3(1) = indexFinger.Simulator.omega3_init;
 Index.a1(1) = indexFinger.Simulator.alpha1_init;
 Index.a2(1) = indexFinger.Simulator.alpha2_init;
 Index.a3(1) = indexFinger.Simulator.alpha3_init;
+
+Index.tau1(1) = 0;
+Index.tau2(1) = 0;
+Index.tau3(1) = 0;
 
 %
 
@@ -130,7 +136,10 @@ Thumb = struct( ...
     'o3',  zeros(1, N), ...
     'a1',  zeros(1, N), ...
     'a2',  zeros(1, N), ...
-    'a3',  zeros(1, N) ...
+    'a3',  zeros(1, N), ...
+    'tau1',zeros(1, N), ...
+    'tau2',zeros(1, N), ...
+    'tau3',zeros(1, N) ...
 );
 
 Thumb.th1(1) = thumbFinger.Simulator.theta1_init;
@@ -143,7 +152,11 @@ Thumb.o3(1) = thumbFinger.Simulator.omega3_init;
 
 Thumb.a1(1) = thumbFinger.Simulator.alpha1_init;
 Thumb.a2(1) = thumbFinger.Simulator.alpha2_init;
-Thumb.a3(1) = thumbFinger.Simulator.alpha3_init; 
+Thumb.a3(1) = thumbFinger.Simulator.alpha3_init;
+
+Thumb.tau1(1) = 0;
+Thumb.tau2(1) = 0;
+Thumb.tau3(1) = 0;
 
 for k = 2:N
     t_init = time(k-1);
@@ -181,6 +194,10 @@ for k = 2:N
     Index.a1(k) = indexFinger.Simulator.results.alpha1(end);
     Index.a2(k) = indexFinger.Simulator.results.alpha2(end);
     Index.a3(k) = indexFinger.Simulator.results.alpha3(end);
+
+    Index.tau1(k) = indexFinger.Simulator.results.tau1_v(end);
+    Index.tau2(k) = indexFinger.Simulator.results.tau2_v(end);
+    Index.tau3(k) = indexFinger.Simulator.results.tau3_v(end);
 
     correctedTh1 = prothesisCorrections.Correct_RInPxJ(Index.th1(k) * 180/pi());
     correctedTh2 = prothesisCorrections.Correct_RInMdJ(Index.th2(k) * 180/pi());
@@ -314,6 +331,10 @@ for k = 2:N
     Thumb.a2(k) = thumbFinger.Simulator.results.alpha2(end);
     Thumb.a3(k) = thumbFinger.Simulator.results.alpha3(end);
 
+    Thumb.tau1(k) = thumbFinger.Simulator.results.tau1_v(end);
+    Thumb.tau2(k) = thumbFinger.Simulator.results.tau2_v(end);
+    Thumb.tau3(k) = thumbFinger.Simulator.results.tau3_v(end);
+
     correctedTh1 = prothesisCorrections.Correct_RThPxJ(Thumb.th1(k) * 180/pi());
     correctedTh2 = prothesisCorrections.Correct_RThMdJ(Thumb.th2(k) * 180/pi());
     correctedTh3 = prothesisCorrections.Correct_RThDsJ(Thumb.th3(k) * 180/pi());
@@ -323,13 +344,26 @@ for k = 2:N
 end
 
 indexFinger.Simulator.plotTripleFinger(Index.th1, Index.th2, Index.th3);
-middleFinger.Simulator.plotTripleFinger(Middle.th1, Middle.th2, Middle.th3);
-ringFinger.Simulator.plotTripleFinger(Ring.th1, Ring.th2, Ring.th3);
-pickyFinger.Simulator.plotTripleFinger(Picky.th1, Picky.th2, Picky.th3);
-thumbFinger.Simulator.plotTripleFinger(Thumb.th1, Thumb.th2, Thumb.th3);
+indexFinger.Simulator.plotFingerResults( ...
+    time, ...
+    Index);
 
+% middleFinger.Simulator.plotTripleFinger(Middle.th1, Middle.th2, Middle.th3);
+% ringFinger.Simulator.plotTripleFinger(Ring.th1, Ring.th2, Ring.th3);
+% pickyFinger.Simulator.plotTripleFinger(Picky.th1, Picky.th2, Picky.th3);
+% 
+thumbFinger.Simulator.plotTripleFinger(Thumb.th1, Thumb.th2, Thumb.th3);
+thumbFinger.Simulator.plotFingerResults( ...
+    time, ...
+    Thumb)
+
+% errors
 t = thumbFinger.Simulator.time(2:end)';
-plotLocalErrorCurve(t, thumbFinger.Simulator.err3, '\theta_3_thumb', 'Thumb Distal phalanx – Local error')
+plotLocalErrorCurve(t, thumbFinger.Simulator.err3, '\theta_3_thumb', 'Thumb Distal phalanx – Local error');
+plotLocalErrorCurve(t, thumbFinger.Simulator.err2, '\theta_2_thumb', 'Thumb Middle phalanx – Local error');
+plotLocalErrorCurve(t, thumbFinger.Simulator.err1, '\theta_1_thumb', 'Thumb Proximal phalanx – Local error');
 
 t = indexFinger.Simulator.time(2:end)';
 plotLocalErrorCurve(t, indexFinger.Simulator.err3, '\theta_3_index', 'Index Distal phalanx - Local error');
+plotLocalErrorCurve(t, indexFinger.Simulator.err2, '\theta_2_index', 'Index Middle phalanx - Local error');
+plotLocalErrorCurve(t, indexFinger.Simulator.err1, '\theta_1_index', 'Index Proximal phalanx - Local error');
