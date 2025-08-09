@@ -70,7 +70,7 @@ To get a local copy up and running, follow these steps.
 Clone this repository to your desired folder:
 
 ```sh
-  git clone https://github.com/alexansaa/prostheticHandDigitalTwin
+  git clone https://github.com/laboratorioAI/HandProsthesisSim.git
   cd prostheticHandDigitalTwin
 ```
 
